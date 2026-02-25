@@ -1,29 +1,29 @@
-name: 🇬🇧 Ежедневный диктант английского
+name: 🇬🇧 Ежедневный диктант
 
 on:
   schedule:
-    - cron: '0 6,7 * * *'  # 9:00 и 10:00 по Москве (UTC+3)
-  workflow_dispatch:  # Можно запустить руками для теста
+    - cron: '0 6,7 * * *'  # 9:00 и 10:00 МСК
+  workflow_dispatch:
 
 jobs:
   send_dictant:
     runs-on: ubuntu-latest
     
     steps:
-    - name: 📥 Клонируем репозиторий
+    - name: 📥 Клонируем
       uses: actions/checkout@v4
       
-    - name: 🐍 Устанавливаем Python
+    - name: 🐍 Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
         
-    - name: 📦 Устанавливаем зависимости
-      run: |
-        pip install requests
+    - name: 📦 Зависимости
+      run: pip install requests
         
-    - name: 🤖 Запускаем диктант
+    - name: 🤖 Запуск диктанта
       env:
         BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         CHAT_ID: ${{ secrets.CHAT_ID }}
+        OPENROUTER_KEY: ${{ secrets.OPENROUTER_KEY }}
       run: python dictant_bot.py
