@@ -79,20 +79,26 @@ def is_used(sentence):
     return fake_id in used_ids
 
 def generate_with_openrouter():
-    """Генерирует новое предложение через OpenRouter"""
+    """Генерирует новое предложение через OpenRouter (актуальные бесплатные модели 2026)"""
     
     if not OPENROUTER_KEY:
         print("❌ Нет API ключа OpenRouter")
         return None
     
-    # Рабочие бесплатные модели OpenRouter
+    # АКТУАЛЬНЫЕ БЕСПЛАТНЫЕ МОДЕЛИ OPENROUTER (февраль 2026)
     models = [
-        "deepseek/deepseek-chat:free",
-        "google/gemini-2.0-flash-exp:free",
-        "meta-llama/llama-3.2-3b-instruct:free",
-        "qwen/qwen-2.5-7b-instruct:free",
-        "microsoft/phi-3.5-mini-128k-instruct:free"
+        "arcee-ai/trinity-large-preview:free",     # Универсальная модель
+        "stepfun/step-3.5-flash:free",              # Быстрая модель
+        "z-ai/glm-4.5-air:free",                    # Для агентных приложений
+        "deepseek/deepseek-r1:free",                 # Для сложных рассуждений
+        "meta-llama/llama-3.3-70b-instruct:free",    # Llama 3.3
+        "google/gemma-3-27b-it:free",                 # Gemma 3
+        "z-ai/glm-5-pony-alpha:free",                  # Pony Alpha (новинка)
+        "nvidia/nemotron-3-nano:free"                  # NVIDIA модель
     ]
+    
+    # Можно использовать автоматический роутер
+    # models = ["openrouter/free"]  # OpenRouter сам выберет случайную бесплатную модель
     
     model = random.choice(models)
     print(f"🤖 Использую модель: {model}")
@@ -102,10 +108,10 @@ def generate_with_openrouter():
     
     Требования:
     - Предложение должно быть из 5-10 слов
-    - Тема: повседневная жизнь (семья, работа, еда, путешествия, хобби)
+    - Тема: повседневная жизнь (семья, работа, еда, путешествия, хобби, погода, здоровье)
     - Уровень: beginner/intermediate
     
-    Верни ТОЛЬКО JSON в таком формате:
+    Верни ТОЛЬКО JSON в таком формате (без пояснений, без ```):
     {
         "en": "предложение на английском",
         "ru": "перевод на русский",
@@ -113,8 +119,10 @@ def generate_with_openrouter():
         "difficulty": "легко"
     }
     
-    Пример ответа:
+    Примеры:
     {"en": "I usually drink coffee in the morning", "ru": "Я обычно пью кофе утром", "topic": "☕ Еда", "difficulty": "легко"}
+    {"en": "My sister lives in Moscow", "ru": "Моя сестра живет в Москве", "topic": "🏠 Семья", "difficulty": "легко"}
+    {"en": "It often rains in autumn", "ru": "Осенью часто идет дождь", "topic": "☀️ Погода", "difficulty": "легко"}
     """
     
     try:
@@ -283,7 +291,7 @@ def main():
     # Проверяем наличие всех ключей
     print(f"🤖 BOT_TOKEN: {'✅' if BOT_TOKEN else '❌'} (первые символы: {BOT_TOKEN[:10] if BOT_TOKEN else 'нет'})")
     print(f"📢 CHAT_ID: {'✅' if CHAT_ID else '❌'} ({CHAT_ID if CHAT_ID else 'нет'})")
-    print(f"🔑 OPENROUTER_KEY: {'✅' if OPENROUTER_KEY else '❌'}")
+    print(f"🔑 OPENROUTER_KEY: {'✅' if OPENROUTER_KEY else '❌'} (первые символы: {OPENROUTER_KEY[:10] if OPENROUTER_KEY else 'нет'})")
     
     current_hour = datetime.now().hour
     print(f"🕐 Текущее время UTC: {current_hour}:{datetime.now().minute}")
