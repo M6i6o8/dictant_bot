@@ -3,7 +3,6 @@ import random
 import os
 import requests
 from datetime import datetime
-import time
 
 # ===== НАСТРОЙКИ =====
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
@@ -12,35 +11,44 @@ SENTENCES_FILE = 'sentences.json'
 
 def load_sentences():
     """Загружает предложения из JSON"""
-    with open(SENTENCES_FILE, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-    return data['sentences']
-
-def get_random_sentence(sentences, last_id=None):
-    """Выбирает случайное предложение, не повторяя последнее"""
-    if last_id:
-        # Исключаем последнее использованное
-        available = [s for s in sentences if s['id'] != last_id]
-    else:
-        available = sentences
-    
-    if not available:  # Если все предложения использованы
-        return random.choice(sentences)
-    
-    return random.choice(available)
-
-def save_last_sentence(sentence_id):
-    """Сохраняет ID последнего предложения"""
-    with open('last_sentence.txt', 'w') as f:
-        f.write(str(sentence_id))
+    try:
+        with open(SENTENCES_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        return data['sentences']
+    except Exception as e:
+        print(f"Ошибка загрузки sentences.json: {e}")
+        # Возвращаем тестовые данные если файл не найден
+        return [
+            {
+                "id": 1,
+                "en": "I bought a new car yesterday",
+                "ru": "Я вчера купил новую машину",
+                "topic": "🚗 Покупки",
+                "difficulty": "легко"
+            }
+        ]
 
 def load_last_sentence():
     """Загружает ID последнего предложения"""
     try:
-        with open('last_sentence.txt', 'r') as f:
-            return int(f.read().strip())
-    except:
+        if os.path.exists('last_sentence.txt'):
+            with open('last_sentence.txt', 'r') as f:
+                content = f.read().strip()
+                if content:
+                    return int(content)
         return None
+    except Exception as e:
+        print(f"Ошибка чтения файла: {e}")
+        return None
+
+def save_last_sentence(sentence_id):
+    """Сохраняет ID последнего предложения"""
+    try:
+        with open('last_sentence.txt', 'w') as f:
+            f.write(str(sentence_id))
+        print(f"✅ Сохранен ID: {sentence_id}")
+    except Exception as e:
+        print(f"❌ Ошибка сохранения: {e}")
 
 def send_telegram_message(text):
     """Отправляет сообщение в Telegram"""
@@ -51,61 +59,66 @@ def send_telegram_message(text):
         'parse_mode': 'HTML'
     }
     try:
-        response = requests.post(url, data=data)
-        return response.json()
+        print(f"📤 Отправляем в чат {CHAT_ID}")
+        response = requests.post(url, data=data, timeout=10)
+        result = response.json()
+        if result.get('ok'):
+            print("✅ Сообщение отправлено успешно")
+        else:
+            print(f"❌ Ошибка Telegram: {result}")
+        return result
     except Exception as e:
-        print(f"Ошибка отправки: {e}")
+        print(f"❌ Ошибка отправки: {e}")
         return None
 
 def main():
-    """Главная функция"""
-    # Загружаем все предложения
+    """Главная функция - тестовый режим"""
+    print("🚀 Запуск тестового режима...")
+    
+    # Загружаем предложения
     sentences = load_sentences()
+    print(f"📚 Загружено предложений: {len(sentences)}")
     
-    # Загружаем последнее использованное
-    last_id = load_last_sentence()
+    # Выбираем случайное предложение
+    sentence = random.choice(sentences)
+    print(f"🎯 Выбрано предложение ID: {sentence['id']}")
     
-    # Выбираем новое предложение
-    sentence = get_random_sentence(sentences, last_id)
+    # ===== ОТПРАВЛЯЕМ АНГЛИЙСКОЕ ПРЕДЛОЖЕНИЕ =====
+    message_en = f"📝 <b>ТЕСТОВЫЙ ДИКТАНТ</b>\n\n"
+    message_en += f"<b>Тема:</b> {sentence['topic']}\n"
+    message_en += f"<b>Сложность:</b> {sentence['difficulty']}\n\n"
+    message_en += f"🇬🇧 <b>Переведи на русский:</b>\n"
+    message_en += f"<i>{sentence['en']}</i>\n\n"
+    message_en += f"⏳ <b>Проверка через минуту</b>"
     
-    # Получаем текущее время (в UTC, но мы настроим кроном)
-    now = datetime.now()
-    hour = now.hour
+    print(f"\n📝 Отправляем задание...")
+    result1 = send_telegram_message(message_en)
     
-    # Определяем, какое сообщение отправлять
-    # Крон настроен на 6 и 7 UTC (9 и 10 МСК)
-    
-    if hour == 6:  # 9:00 МСК
-        # Утром - присылаем английское предложение
-        message = f"📝 <b>Ежедневный диктант</b>\n\n"
-        message += f"<b>Тема:</b> {sentence['topic']}\n\n"
-        message += f"🇬🇧 <b>Переведи на русский:</b>\n"
-        message += f"<i>{sentence['en']}</i>\n\n"
-        message += f"⏳ <b>Ответ придет через час</b>\n"
-        message += f"✍️ Пиши свой вариант в комментарии!"
-        
-        send_telegram_message(message)
-        print(f"Отправлено задание (EN): {sentence['en']}")
-        
-        # Сохраняем ID для ответа через час
+    if result1 and result1.get('ok'):
+        # Сохраняем ID только если первое сообщение ушло
         save_last_sentence(sentence['id'])
-    
-    elif hour == 7:  # 10:00 МСК
-        # Через час - присылаем перевод
-        message = f"📝 <b>Проверка диктанта</b>\n\n"
-        message += f"🇬🇧 <b>Было:</b> {sentence['en']}\n"
-        message += f"🇷🇺 <b>Правильный перевод:</b>\n"
-        message += f"<i>{sentence['ru']}</i>\n\n"
-        message += f"📊 <b>Разбор:</b>\n"
-        message += f"• Тема: {sentence['topic']}\n"
-        message += f"• Сложность: {sentence.get('difficulty', 'средняя')}\n\n"
-        message += f"💪 Как твой вариант? Похоже? Пиши в комментах!"
         
-        send_telegram_message(message)
-        print(f"Отправлен ответ (RU): {sentence['ru']}")
-    
+        # Ждем минуту
+        print("⏳ Ждем 60 секунд перед отправкой перевода...")
+        import time
+        time.sleep(60)
+        
+        # ===== ОТПРАВЛЯЕМ ПЕРЕВОД =====
+        message_ru = f"📝 <b>ПРОВЕРКА ТЕСТОВОГО ДИКТАНТА</b>\n\n"
+        message_ru += f"🇬🇧 <b>Было:</b> {sentence['en']}\n"
+        message_ru += f"🇷🇺 <b>Правильный перевод:</b>\n"
+        message_ru += f"<i>{sentence['ru']}</i>\n\n"
+        message_ru += f"📊 <b>Разбор:</b>\n"
+        message_ru += f"• Тема: {sentence['topic']}\n"
+        message_ru += f"• Сложность: {sentence['difficulty']}\n\n"
+        message_ru += f"💪 Как твой вариант? Напиши в комментариях!"
+        
+        print(f"\n📝 Отправляем перевод...")
+        send_telegram_message(message_ru)
     else:
-        print(f"Не время для отправки. Текущий час UTC: {hour}")
+        print("❌ Первое сообщение не отправлено, перевод не будет отправлен")
+    
+    print("\n🏁 Тест завершен")
 
 if __name__ == "__main__":
     main()
