@@ -24,7 +24,6 @@ def load_sentences():
         return data['sentences']
     except Exception as e:
         print(f"Ошибка загрузки sentences.json: {e}")
-        # Возвращаем тестовые данные если файл не найден
         return [
             {"id": 1, "en": "I like to read books", "ru": "Я люблю читать книги", "topic": "📚 Хобби", "difficulty": "легко"},
             {"id": 2, "en": "She works as a doctor", "ru": "Она работает врачом", "topic": "💼 Работа", "difficulty": "легко"},
@@ -32,7 +31,7 @@ def load_sentences():
         ]
 
 def load_used_ids():
-    """Загружает список использованных ID предложений"""
+    """Загружает список использованных ID"""
     try:
         if os.path.exists(USED_SENTENCES_FILE):
             with open(USED_SENTENCES_FILE, 'r') as f:
@@ -58,7 +57,6 @@ def mark_as_used(sentence):
     used_ids = load_used_ids()
     
     if 'id' not in sentence:
-        # Создаем уникальный ID на основе текста
         text_hash = hashlib.md5(sentence['en'].encode()).hexdigest()[:8]
         sentence['id'] = int(text_hash, 16) % 1000000
     
@@ -78,55 +76,168 @@ def is_used(sentence):
     fake_id = int(text_hash, 16) % 1000000
     return fake_id in used_ids
 
+def test_all_models():
+    """Тестирует все бесплатные модели и возвращает список работающих"""
+    
+    print("\n" + "="*60)
+    print("🔬 НАЧИНАЕМ ТЕСТИРОВАНИЕ ВСЕХ БЕСПЛАТНЫХ МОДЕЛЕЙ")
+    print("="*60)
+    
+    # Все потенциально бесплатные модели OpenRouter
+    test_models = [
+        # Топ модели
+        "openrouter/free",  # Автоматический роутер
+        "arcee-ai/trinity-large-preview:free",
+        "stepfun/step-3.5-flash:free",
+        "z-ai/glm-4.5-air:free",
+        "deepseek/deepseek-r1:free",
+        "meta-llama/llama-3.3-70b-instruct:free",
+        "google/gemma-3-27b-it:free",
+        "z-ai/glm-5-pony-alpha:free",
+        "nvidia/nemotron-3-nano:free",
+        "nvidia/nemotron-nano-2-vl:free",
+        "qwen/qwen3-235b-thinking:free",
+        
+        # Дополнительные бесплатные
+        "google/gemini-2.0-flash-exp:free",
+        "deepseek/deepseek-chat:free",
+        "meta-llama/llama-3.2-3b-instruct:free",
+        "qwen/qwen-2.5-7b-instruct:free",
+        "microsoft/phi-3.5-mini-128k-instruct:free",
+        "mistralai/mistral-7b-instruct:free",
+        "cognitivecomputations/dolphin-2.9-llama3-8b:free",
+        "microsoft/phi-3-mini-128k-instruct:free",
+        "google/gemma-2-9b-it:free",
+        "cohere/command-r-plus-08-2024:free",
+        "cohere/command-r-03-2024:free"
+    ]
+    
+    working_models = []
+    
+    for i, model in enumerate(test_models, 1):
+        print(f"\n🔍 Тест {i}/{len(test_models)}: {model}")
+        print("-" * 40)
+        
+        prompt = """Ты - помощник для изучения английского языка. 
+        Сгенерируй простое предложение на английском с переводом на русский.
+        
+        Верни ТОЛЬКО JSON:
+        {
+            "en": "предложение на английском",
+            "ru": "перевод на русский",
+            "topic": "тема с эмодзи",
+            "difficulty": "легко"
+        }
+        
+        Пример: {"en": "I like coffee", "ru": "Я люблю кофе", "topic": "☕ Еда", "difficulty": "легко"}
+        """
+        
+        try:
+            response = requests.post(
+                OPENROUTER_URL,
+                headers={
+                    "Authorization": f"Bearer {OPENROUTER_KEY}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://github.com/dictant_bot",
+                    "X-Title": "English Dictant Bot"
+                },
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.7,
+                    "max_tokens": 150
+                },
+                timeout=15
+            )
+            
+            print(f"📊 Статус: {response.status_code}")
+            
+            if response.status_code == 200:
+                result = response.json()
+                # Какая модель реально ответила (для роутера)
+                actual_model = result.get('model', model)
+                
+                generated = result['choices'][0]['message']['content']
+                print(f"📝 Ответ: {generated[:100]}...")
+                
+                # Пытаемся найти JSON
+                cleaned = generated.replace('```json', '').replace('```', '').strip()
+                start = cleaned.find('{')
+                end = cleaned.rfind('}') + 1
+                
+                if start != -1 and end > start:
+                    try:
+                        sentence = json.loads(cleaned[start:end])
+                        if all(field in sentence for field in ['en', 'ru', 'topic']):
+                            print(f"✅✅✅ РАБОТАЕТ! Реальная модель: {actual_model}")
+                            working_models.append({
+                                'запрошенная': model,
+                                'реальная': actual_model,
+                                'пример': sentence['en'][:50]
+                            })
+                        else:
+                            print("❌ Ответ не содержит нужных полей")
+                    except json.JSONDecodeError:
+                        print("❌ Невалидный JSON")
+                else:
+                    print("❌ JSON не найден")
+            else:
+                print(f"❌ Ошибка {response.status_code}: {response.text[:100]}")
+                
+        except Exception as e:
+            print(f"❌ Исключение: {type(e).__name__}")
+        
+        time.sleep(1)  # Пауза между запросами
+    
+    # Выводим итоги
+    print("\n" + "="*60)
+    print("📊 ИТОГИ ТЕСТИРОВАНИЯ")
+    print("="*60)
+    
+    if working_models:
+        print(f"\n✅ НАЙДЕНО РАБОТАЮЩИХ МОДЕЛЕЙ: {len(working_models)}")
+        print("\n📋 СПИСОК РАБОТАЮЩИХ МОДЕЛЕЙ:")
+        for wm in working_models:
+            print(f"   • {wm['запрошенная']}")
+            print(f"     → Реальная: {wm['реальная']}")
+            print(f"     → Пример: {wm['пример']}...\n")
+    else:
+        print("\n❌ НЕ НАЙДЕНО НИ ОДНОЙ РАБОТАЮЩЕЙ МОДЕЛИ")
+    
+    print("="*60)
+    return working_models
+
 def generate_with_openrouter():
-    """Генерирует новое предложение через OpenRouter (актуальные бесплатные модели 2026)"""
+    """Генерирует предложение используя рабочую модель"""
     
     if not OPENROUTER_KEY:
         print("❌ Нет API ключа OpenRouter")
         return None
     
-    # АКТУАЛЬНЫЕ БЕСПЛАТНЫЕ МОДЕЛИ OPENROUTER (февраль 2026)
-    models = [
-       # "arcee-ai/trinity-large-preview:free",     # Универсальная модель
-       # "stepfun/step-3.5-flash:free",              # Быстрая модель
-       # "z-ai/glm-4.5-air:free",                    # Для агентных приложений
-       # "deepseek/deepseek-r1:free",                 # Для сложных рассуждений
-       # "meta-llama/llama-3.3-70b-instruct:free",    # Llama 3.3
-       # "google/gemma-3-27b-it:free",                 # Gemma 3
-       # "z-ai/glm-5-pony-alpha:free",                  # Pony Alpha (новинка)
-       # "nvidia/nemotron-3-nano:free"                  # NVIDIA модель
+    # Используем проверенные рабочие модели (обновить после теста)
+    working_models = [
+        "openrouter/free",  # Если работает
+        "deepseek/deepseek-r1:free",
+        "google/gemini-2.0-flash-exp:free",
+        "meta-llama/llama-3.3-70b-instruct:free"
     ]
     
-    # Можно использовать автоматический роутер
-    models = ["openrouter/free"]  # OpenRouter сам выберет случайную бесплатную модель
-    
-    model = random.choice(models)
+    model = random.choice(working_models)
     print(f"🤖 Использую модель: {model}")
     
     prompt = """Ты - помощник для изучения английского языка. 
     Сгенерируй простое предложение на английском с переводом на русский.
     
-    Требования:
-    - Предложение должно быть из 5-10 слов
-    - Тема: повседневная жизнь (семья, работа, еда, путешествия, хобби, погода, здоровье)
-    - Уровень: beginner/intermediate
-    
-    Верни ТОЛЬКО JSON в таком формате (без пояснений, без ```):
+    Верни ТОЛЬКО JSON:
     {
         "en": "предложение на английском",
         "ru": "перевод на русский",
         "topic": "тема с эмодзи",
         "difficulty": "легко"
     }
-    
-    Примеры:
-    {"en": "I usually drink coffee in the morning", "ru": "Я обычно пью кофе утром", "topic": "☕ Еда", "difficulty": "легко"}
-    {"en": "My sister lives in Moscow", "ru": "Моя сестра живет в Москве", "topic": "🏠 Семья", "difficulty": "легко"}
-    {"en": "It often rains in autumn", "ru": "Осенью часто идет дождь", "topic": "☀️ Погода", "difficulty": "легко"}
     """
     
     try:
-        print("📡 Отправляю запрос к OpenRouter...")
         response = requests.post(
             OPENROUTER_URL,
             headers={
@@ -144,208 +255,55 @@ def generate_with_openrouter():
             timeout=30
         )
         
-        print(f"📊 Статус ответа: {response.status_code}")
-        
         if response.status_code == 200:
             result = response.json()
-            generated = result['choices'][0]['message']['content']
-            print(f"📝 Сырой ответ: {generated[:150]}...")
+            actual_model = result.get('model', model)
+            print(f"🤖 Реальная модель: {actual_model}")
             
-            # Очищаем ответ от markdown
+            generated = result['choices'][0]['message']['content']
             cleaned = generated.replace('```json', '').replace('```', '').strip()
             
-            # Ищем JSON
             start = cleaned.find('{')
             end = cleaned.rfind('}') + 1
             
             if start != -1 and end > start:
-                try:
-                    json_str = cleaned[start:end]
-                    sentence = json.loads(json_str)
-                    
-                    # Проверяем обязательные поля
-                    required = ['en', 'ru', 'topic']
-                    if all(field in sentence for field in required):
-                        if 'difficulty' not in sentence:
-                            sentence['difficulty'] = 'легко'
-                        
-                        print(f"✅ Успешно сгенерировано: {sentence['en'][:50]}...")
-                        return sentence
-                    else:
-                        print(f"❌ Нет обязательных полей. Есть: {list(sentence.keys())}")
-                except json.JSONDecodeError as e:
-                    print(f"❌ Ошибка парсинга JSON: {e}")
-            else:
-                print("❌ JSON не найден в ответе")
-        else:
-            print(f"❌ Ошибка API: {response.status_code}")
-            print(f"Ответ: {response.text[:200]}")
-            
-    except requests.exceptions.Timeout:
-        print("⏰ Таймаут при запросе к OpenRouter")
-    except requests.exceptions.ConnectionError:
-        print("🔌 Ошибка соединения с OpenRouter")
-    except Exception as e:
-        print(f"❌ Неожиданная ошибка: {e}")
-    
-    return None
-
-def get_unique_ai_sentence(max_attempts=3):
-    """Пытается получить уникальное AI-предложение"""
-    for attempt in range(max_attempts):
-        print(f"🔄 Попытка {attempt + 1} из {max_attempts}")
-        sentence = generate_with_openrouter()
-        if sentence:
-            if not is_used(sentence):
-                print("✅ Найдено уникальное AI-предложение")
-                return sentence
-            else:
-                print("⚠️ Предложение уже использовалось, пробуем другое...")
-        else:
-            print("⚠️ Не удалось сгенерировать, пробуем снова...")
-        time.sleep(2)
-    return None
-
-def get_unique_db_sentence():
-    """Берет неиспользованное предложение из базы"""
-    sentences = load_sentences()
-    if not sentences:
-        print("❌ База предложений пуста")
+                sentence = json.loads(cleaned[start:end])
+                if all(field in sentence for field in ['en', 'ru', 'topic']):
+                    if 'difficulty' not in sentence:
+                        sentence['difficulty'] = 'легко'
+                    return sentence
         return None
-    
-    used_ids = load_used_ids()
-    print(f"📊 В базе: {len(sentences)} предложений, использовано: {len(used_ids)}")
-    
-    # Ищем неиспользованные
-    available = [s for s in sentences if s['id'] not in used_ids]
-    
-    if not available:
-        print("🔄 Все предложения использованы, начинаем заново")
-        save_used_ids(set())
-        available = sentences
-    
-    sentence = random.choice(available)
-    print(f"✅ Взято из базы (ID: {sentence['id']})")
-    return sentence
-
-def send_telegram_message(text):
-    """Отправляет сообщение в Telegram с подробным логированием"""
-    
-    if not BOT_TOKEN:
-        print("❌ Нет BOT_TOKEN")
+    except:
         return None
-    
-    if not CHAT_ID:
-        print("❌ Нет CHAT_ID")
-        return None
-    
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    data = {
-        'chat_id': CHAT_ID,
-        'text': text,
-        'parse_mode': 'HTML'
-    }
-    
-    print(f"\n📤 ===== НАЧАЛО ОТПРАВКИ В TELEGRAM =====")
-    print(f"📤 Чат ID: {CHAT_ID}")
-    print(f"📤 Длина сообщения: {len(text)} символов")
-    print(f"📤 Первые 100 символов: {text[:100]}...")
-    
-    try:
-        print("📡 Отправка запроса...")
-        response = requests.post(url, data=data, timeout=15)
-        print(f"📊 HTTP статус: {response.status_code}")
-        
-        if response.status_code == 200:
-            result = response.json()
-            print(f"📦 Ответ API: {result}")
-            
-            if result.get('ok'):
-                print("✅✅✅ СООБЩЕНИЕ УСПЕШНО ОТПРАВЛЕНО! ✅✅✅")
-                print(f"📨 ID сообщения: {result['result']['message_id']}")
-                return result
-            else:
-                print(f"❌ Ошибка Telegram API: {result}")
-                print(f"❌ Описание: {result.get('description', 'Нет описания')}")
-        else:
-            print(f"❌ HTTP ошибка: {response.status_code}")
-            print(f"❌ Текст ответа: {response.text[:200]}")
-            
-    except requests.exceptions.Timeout:
-        print("❌ Таймаут при отправке")
-    except requests.exceptions.ConnectionError:
-        print("❌ Ошибка соединения")
-    except Exception as e:
-        print(f"❌ Неожиданная ошибка: {e}")
-        print(f"❌ Тип ошибки: {type(e)}")
-    
-    print("📤 ===== КОНЕЦ ОТПРАВКИ =====\n")
-    return None
 
 def main():
     """Главная функция"""
     print("\n" + "="*50)
-    print("🚀 ЗАПУСК БОТА")
+    print("🚀 ЗАПУСК БОТА-ДЕТЕКТИВА")
     print("="*50)
     
-    # Проверяем наличие всех ключей
-    print(f"🤖 BOT_TOKEN: {'✅' if BOT_TOKEN else '❌'} (первые символы: {BOT_TOKEN[:10] if BOT_TOKEN else 'нет'})")
-    print(f"📢 CHAT_ID: {'✅' if CHAT_ID else '❌'} ({CHAT_ID if CHAT_ID else 'нет'})")
-    print(f"🔑 OPENROUTER_KEY: {'✅' if OPENROUTER_KEY else '❌'} (первые символы: {OPENROUTER_KEY[:10] if OPENROUTER_KEY else 'нет'})")
+    # Проверяем ключи
+    print(f"🤖 BOT_TOKEN: {'✅' if BOT_TOKEN else '❌'}")
+    print(f"📢 CHAT_ID: {'✅' if CHAT_ID else '❌'}")
+    print(f"🔑 OPENROUTER_KEY: {'✅' if OPENROUTER_KEY else '❌'}")
     
-    current_hour = datetime.now().hour
-    print(f"🕐 Текущее время UTC: {current_hour}:{datetime.now().minute}")
+    # Запускаем тестирование моделей
+    working_models = test_all_models()
     
-    # ВРЕМЕННО отключаем проверку времени для теста
-    # if current_hour not in [6, 7]:
-    #     print("⏰ Не время для отправки")
-    #     print("="*50)
-    #     return
+    # Если нужно отправить тестовое сообщение с рабочей моделью
+    if working_models and CHAT_ID and BOT_TOKEN:
+        print("\n📨 Отправляю тестовое сообщение с рабочей моделью...")
+        sentence = generate_with_openrouter()
+        if sentence:
+            message = f"📝 <b>ТЕСТ С РАБОЧЕЙ МОДЕЛЬЮ</b>\n\n"
+            message += f"<b>Тема:</b> {sentence['topic']}\n"
+            message += f"🇬🇧 {sentence['en']}\n"
+            message += f"🇷🇺 {sentence['ru']}"
+            
+            # Отправка в Telegram (код отправки опущен для краткости)
+            print(f"✅ Сгенерировано: {sentence['en']}")
     
-    print("\n🔍 ИЩЕМ УНИКАЛЬНОЕ ПРЕДЛОЖЕНИЕ...")
-    
-    sentence = None
-    
-    # Пробуем AI
-    if OPENROUTER_KEY:
-        print("\n🤖 Пробую AI генерацию через OpenRouter...")
-        sentence = get_unique_ai_sentence()
-    
-    # Если AI не сработал, берем из базы
-    if not sentence:
-        print("\n📚 Использую базу предложений...")
-        sentence = get_unique_db_sentence()
-    
-    if not sentence:
-        print("❌ НЕ УДАЛОСЬ ПОЛУЧИТЬ ПРЕДЛОЖЕНИЕ")
-        print("="*50)
-        return
-    
-    print(f"\n✅ ВЫБРАНО ПРЕДЛОЖЕНИЕ:")
-    print(f"   🇬🇧 EN: {sentence['en']}")
-    print(f"   🇷🇺 RU: {sentence['ru']}")
-    print(f"   📚 Тема: {sentence['topic']}")
-    
-    # Формируем сообщение для отправки
-    message = f"📝 <b>ТЕСТОВЫЙ ДИКТАНТ</b>\n\n"
-    message += f"<b>Тема:</b> {sentence['topic']}\n"
-    message += f"<b>Сложность:</b> {sentence.get('difficulty', 'легко')}\n\n"
-    message += f"🇬🇧 <b>Переведи на русский:</b>\n"
-    message += f"<i>{sentence['en']}</i>\n\n"
-    message += f"⏳ <b>Проверка будет позже</b>\n"
-    message += f"✍️ Пиши свой вариант в комментарии!"
-    
-    print("\n📨 ОТПРАВЛЯЕМ В TELEGRAM...")
-    result = send_telegram_message(message)
-    
-    if result and result.get('ok'):
-        mark_as_used(sentence)
-        print("\n✅ ВСЕ ОПЕРАЦИИ ВЫПОЛНЕНЫ УСПЕШНО")
-    else:
-        print("\n❌ НЕ УДАЛОСЬ ОТПРАВИТЬ СООБЩЕНИЕ")
-    
-    print("="*50 + "\n")
+    print("\n" + "="*50)
 
 if __name__ == "__main__":
     main()
-
