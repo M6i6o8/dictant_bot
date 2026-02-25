@@ -13,15 +13,15 @@ jobs:
     - name: 📥 Клонируем
       uses: actions/checkout@v4
       
-    - name: 🐍 Python
+    - name: 🐍 Устанавливаем Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
         
-    - name: 📦 Зависимости
+    - name: 📦 Устанавливаем зависимости
       run: pip install requests
         
-    - name: 🤖 Запуск диктанта
+    - name: 🤖 Запускаем диктант
       env:
         BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         CHAT_ID: ${{ secrets.CHAT_ID }}
