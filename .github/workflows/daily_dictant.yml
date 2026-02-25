@@ -1,10 +1,12 @@
-name: 🇬🇧 Тестирование провайдеров
+name: 🇬🇧 Ежедневный диктант
 
 on:
-  workflow_dispatch:  # Только ручной запуск
+  schedule:
+    - cron: '0 6,7 * * *'  # 9:00 и 10:00 МСК
+  workflow_dispatch:
 
 jobs:
-  test_providers:
+  send_dictant:
     runs-on: ubuntu-latest
     
     steps:
@@ -21,11 +23,11 @@ jobs:
         pip install requests
         pip install google-generativeai
         
-    - name: 🤖 Запускаем тестирование
+    - name: 🤖 Запускаем диктант
       env:
         OPENROUTER_KEY: ${{ secrets.OPENROUTER_KEY }}
-        GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
         CEREBRAS_KEY: ${{ secrets.CEREBRAS_KEY }}
+        GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
         BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         CHAT_ID: ${{ secrets.CHAT_ID }}
       run: python dictant_bot.py
