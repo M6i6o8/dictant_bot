@@ -48,7 +48,7 @@ PROVIDERS = [
         'enabled': bool(GEMINI_KEY) and GEMINI_AVAILABLE,
         'type': 'gemini',
         'key': GEMINI_KEY,
-        'model': 'gemini-2.0-flash-exp'
+        'model': 'gemini-1.5-flash-exp'
     },
     {
         'name': 'Cerebras',
@@ -57,8 +57,8 @@ PROVIDERS = [
         'url': CEREBRAS_URL,
         'key': CEREBRAS_KEY,
         'models': [
-            "llama3.1-8b",
-            "llama3.3-70b"
+            "llama-3.1-8b",
+            "llama-3.3-70b"
         ]
     }
 ]
@@ -184,3 +184,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
