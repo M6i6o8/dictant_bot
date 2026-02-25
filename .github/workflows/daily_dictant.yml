@@ -1,12 +1,7 @@
-name: 🇬🇧 Ежедневный диктант английского
+name: 🇬🇧 Тест диктанта
 
 on:
-  schedule:
-    # Запускаем каждый час, отправка только в нужные часы
-    # UTC 6:00 = MSK 9:00
-    # UTC 7:00 = MSK 10:00
-    - cron: '0 6,7 * * *'
-  workflow_dispatch:  # Ручной запуск для теста
+  workflow_dispatch:  # Только ручной запуск
 
 jobs:
   send_dictant:
@@ -14,10 +9,10 @@ jobs:
     
     steps:
     - name: 📥 Клонируем репозиторий
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       
     - name: 🐍 Устанавливаем Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.10'
         
@@ -25,15 +20,8 @@ jobs:
       run: |
         pip install requests
         
-    - name: 🤖 Запускаем диктант
+    - name: 🤖 Запускаем тестовый диктант
       env:
         BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         CHAT_ID: ${{ secrets.CHAT_ID }}
       run: python dictant_bot.py
-      
-    - name: 💾 Сохраняем состояние
-      uses: actions/upload-artifact@v4
-      with:
-        name: last-sentence
-        path: last_sentence.txt
-        retention-days: 1  # Храним один день, дальше не нужно
