@@ -32,7 +32,7 @@ jobs:
       run: python dictant_bot.py
       
     - name: 💾 Сохраняем состояние
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: last-sentence
         path: last_sentence.txt
