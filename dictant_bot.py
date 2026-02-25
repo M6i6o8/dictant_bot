@@ -2,6 +2,7 @@ import json
 import random
 import os
 import requests
+import time
 from datetime import datetime
 
 # ===== НАСТРОЙКИ =====
@@ -58,10 +59,24 @@ def send_telegram_message(text):
         'text': text,
         'parse_mode': 'HTML'
     }
+    
+    # Проверяем бота
+    print("🤔 Проверяем бота...")
+    test_url = f"https://api.telegram.org/bot{BOT_TOKEN}/getMe"
+    try:
+        test_response = requests.get(test_url, timeout=10)
+        print(f"🤖 Бот живой? {test_response.json()}")
+    except Exception as e:
+        print(f"❌ Ошибка проверки бота: {e}")
+        return None
+    
+    # Отправляем сообщение
     try:
         print(f"📤 Отправляем в чат {CHAT_ID}")
         response = requests.post(url, data=data, timeout=10)
         result = response.json()
+        print(f"📦 Ответ Telegram: {result}")
+        
         if result.get('ok'):
             print("✅ Сообщение отправлено успешно")
         else:
@@ -74,6 +89,8 @@ def send_telegram_message(text):
 def main():
     """Главная функция - тестовый режим"""
     print("🚀 Запуск тестового режима...")
+    print(f"🤖 Токен бота: {BOT_TOKEN[:10]}... (скрыто)")
+    print(f"📢 ID чата: {CHAT_ID}")
     
     # Загружаем предложения
     sentences = load_sentences()
@@ -100,7 +117,6 @@ def main():
         
         # Ждем минуту
         print("⏳ Ждем 60 секунд перед отправкой перевода...")
-        import time
         time.sleep(60)
         
         # ===== ОТПРАВЛЯЕМ ПЕРЕВОД =====
