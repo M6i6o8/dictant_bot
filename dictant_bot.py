@@ -87,18 +87,18 @@ def generate_with_openrouter():
     
     # АКТУАЛЬНЫЕ БЕСПЛАТНЫЕ МОДЕЛИ OPENROUTER (февраль 2026)
     models = [
-        "arcee-ai/trinity-large-preview:free",     # Универсальная модель
-        "stepfun/step-3.5-flash:free",              # Быстрая модель
-        "z-ai/glm-4.5-air:free",                    # Для агентных приложений
-        "deepseek/deepseek-r1:free",                 # Для сложных рассуждений
-        "meta-llama/llama-3.3-70b-instruct:free",    # Llama 3.3
-        "google/gemma-3-27b-it:free",                 # Gemma 3
-        "z-ai/glm-5-pony-alpha:free",                  # Pony Alpha (новинка)
-        "nvidia/nemotron-3-nano:free"                  # NVIDIA модель
+       # "arcee-ai/trinity-large-preview:free",     # Универсальная модель
+       # "stepfun/step-3.5-flash:free",              # Быстрая модель
+       # "z-ai/glm-4.5-air:free",                    # Для агентных приложений
+       # "deepseek/deepseek-r1:free",                 # Для сложных рассуждений
+       # "meta-llama/llama-3.3-70b-instruct:free",    # Llama 3.3
+       # "google/gemma-3-27b-it:free",                 # Gemma 3
+       # "z-ai/glm-5-pony-alpha:free",                  # Pony Alpha (новинка)
+       # "nvidia/nemotron-3-nano:free"                  # NVIDIA модель
     ]
     
     # Можно использовать автоматический роутер
-    # models = ["openrouter/free"]  # OpenRouter сам выберет случайную бесплатную модель
+    models = ["openrouter/free"]  # OpenRouter сам выберет случайную бесплатную модель
     
     model = random.choice(models)
     print(f"🤖 Использую модель: {model}")
@@ -348,3 +348,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
