@@ -3,33 +3,221 @@ import random
 import os
 import requests
 import time
-from datetime import datetime
 import hashlib
+from datetime import datetime
+import google.generativeai as genai  # для Gemini
 
 # ===== НАСТРОЙКИ =====
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 CHAT_ID = os.environ.get('CHAT_ID')
-OPENROUTER_KEY = os.environ.get('OPENROUTER_KEY')
 SENTENCES_FILE = 'sentences.json'
 USED_SENTENCES_FILE = 'used_sentences.txt'
 
-# OpenRouter API
+# API ключи разных провайдеров
+OPENROUTER_KEY = os.environ.get('OPENROUTER_KEY')
+GEMINI_KEY = os.environ.get('GEMINI_KEY')
+GROQ_KEY = os.environ.get('GROQ_KEY')
+CEREBRAS_KEY = os.environ.get('CEREBRAS_KEY')
+MISTRAL_KEY = os.environ.get('MISTRAL_KEY')
+
+# URL-ы API
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
+MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
 
-# ✅ ТОЛЬКО ПРОВЕРЕННЫЕ РАБОЧИЕ МОДЕЛИ (из теста)
-WORKING_MODELS = [
-    "openrouter/free",  # Роутер - выберет рабочую
-    "arcee-ai/trinity-large-preview:free",
-    "z-ai/glm-4.5-air:free"
+# Конфигурация провайдеров (порядок = приоритет)
+PROVIDERS = [
+    {
+        'name': 'OpenRouter',
+        'enabled': bool(OPENROUTER_KEY),
+        'type': 'openai',
+        'url': OPENROUTER_URL,
+        'key': OPENROUTER_KEY,
+        'models': [
+            "openrouter/free",
+            "arcee-ai/trinity-large-preview:free",
+            "z-ai/glm-4.5-air:free"
+        ]
+    },
+    {
+        'name': 'Google Gemini',
+        'enabled': bool(GEMINI_KEY),
+        'type': 'gemini',
+        'key': GEMINI_KEY,
+        'model': 'gemini-2.0-flash-exp'
+    },
+    {
+        'name': 'Groq',
+        'enabled': bool(GROQ_KEY),
+        'type': 'openai',
+        'url': GROQ_URL,
+        'key': GROQ_KEY,
+        'models': [
+            "llama-3.3-70b-versatile",
+            "mixtral-8x7b-32768",
+            "gemma2-9b-it"
+        ]
+    },
+    {
+        'name': 'Cerebras',
+        'enabled': bool(CEREBRAS_KEY),
+        'type': 'openai',
+        'url': CEREBRAS_URL,
+        'key': CEREBRAS_KEY,
+        'models': [
+            "llama3.1-8b",
+            "llama3.3-70b"
+        ]
+    },
+    {
+        'name': 'Mistral',
+        'enabled': bool(MISTRAL_KEY),
+        'type': 'mistral',
+        'key': MISTRAL_KEY,
+        'models': [
+            "mistral-large-latest",
+            "mistral-small-latest"
+        ]
+    }
 ]
 
-# Запасные модели на случай, если основные упадут
-BACKUP_MODELS = [
-    "nvidia/nemotron-3-nano:free",
-    "deepseek/deepseek-r1:free",
-    "meta-llama/llama-3.3-70b-instruct:free",
-    "google/gemma-3-27b-it:free"
-]
+def generate_with_gemini(provider):
+    """Генерация через Google Gemini"""
+    try:
+        genai.configure(api_key=provider['key'])
+        model = genai.GenerativeModel(provider['model'])
+        
+        prompt = """Сгенерируй простое предложение на английском с переводом на русский.
+        Верни ТОЛЬКО JSON в таком формате (без пояснений, без ```):
+        {
+            "en": "предложение на английском (5-10 слов)",
+            "ru": "перевод на русский",
+            "topic": "тема с эмодзи",
+            "difficulty": "легко"
+        }
+        """
+        
+        response = model.generate_content(prompt)
+        generated = response.text
+        
+        # Очищаем ответ от markdown
+        cleaned = generated.replace('```json', '').replace('```', '').strip()
+        start = cleaned.find('{')
+        end = cleaned.rfind('}') + 1
+        
+        if start != -1 and end > start:
+            sentence = json.loads(cleaned[start:end])
+            if all(field in sentence for field in ['en', 'ru', 'topic']):
+                return sentence
+    except Exception as e:
+        print(f"⚠️ Gemini ошибка: {type(e).__name__}")
+    return None
+
+def generate_with_mistral(provider):
+    """Генерация через Mistral AI"""
+    try:
+        model = random.choice(provider['models'])
+        
+        response = requests.post(
+            provider['url'],
+            headers={
+                "Authorization": f"Bearer {provider['key']}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": model,
+                "messages": [
+                    {"role": "user", "content": """Сгенерируй простое предложение на английском с переводом на русский.
+                    Верни ТОЛЬКО JSON:
+                    {"en": "...", "ru": "...", "topic": "...", "difficulty": "легко"}"""}
+                ],
+                "temperature": 0.8,
+                "max_tokens": 150
+            },
+            timeout=15
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            generated = result['choices'][0]['message']['content']
+            
+            cleaned = generated.replace('```json', '').replace('```', '').strip()
+            start = cleaned.find('{')
+            end = cleaned.rfind('}') + 1
+            
+            if start != -1 and end > start:
+                sentence = json.loads(cleaned[start:end])
+                if all(field in sentence for field in ['en', 'ru', 'topic']):
+                    return sentence
+    except Exception as e:
+        print(f"⚠️ Mistral ошибка: {type(e).__name__}")
+    return None
+
+def generate_with_openai(provider):
+    """Генерация через OpenAI-совместимые API (OpenRouter, Groq, Cerebras)"""
+    try:
+        model = random.choice(provider['models'])
+        
+        response = requests.post(
+            provider['url'],
+            headers={
+                "Authorization": f"Bearer {provider['key']}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": model,
+                "messages": [
+                    {"role": "user", "content": """Сгенерируй простое предложение на английском с переводом на русский.
+                    Верни ТОЛЬКО JSON:
+                    {"en": "...", "ru": "...", "topic": "...", "difficulty": "легко"}"""}
+                ],
+                "temperature": 0.8,
+                "max_tokens": 150
+            },
+            timeout=15
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            generated = result['choices'][0]['message']['content']
+            
+            cleaned = generated.replace('```json', '').replace('```', '').strip()
+            start = cleaned.find('{')
+            end = cleaned.rfind('}') + 1
+            
+            if start != -1 and end > start:
+                sentence = json.loads(cleaned[start:end])
+                if all(field in sentence for field in ['en', 'ru', 'topic']):
+                    return sentence
+    except Exception as e:
+        print(f"⚠️ {provider['name']} ошибка: {type(e).__name__}")
+    return None
+
+def generate_with_ai():
+    """Пробует всех провайдеров по очереди, пока не получит предложение"""
+    
+    for provider in PROVIDERS:
+        if not provider['enabled']:
+            continue
+            
+        print(f"\n🤖 Пробую {provider['name']}...")
+        
+        if provider['type'] == 'gemini':
+            sentence = generate_with_gemini(provider)
+        elif provider['type'] == 'mistral':
+            sentence = generate_with_mistral(provider)
+        else:  # openai-совместимые
+            sentence = generate_with_openai(provider)
+        
+        if sentence:
+            print(f"✅ {provider['name']} сработал!")
+            return sentence
+        
+        time.sleep(1)  # Пауза между провайдерами
+    
+    print("❌ Ни один провайдер не сработал")
+    return None
 
 def load_sentences():
     """Загружает предложения из JSON"""
@@ -91,93 +279,11 @@ def is_used(sentence):
     fake_id = int(text_hash, 16) % 1000000
     return fake_id in used_ids
 
-def generate_with_openrouter():
-    """Генерирует предложение используя ТОЛЬКО ПРОВЕРЕННЫЕ рабочие модели"""
-    
-    if not OPENROUTER_KEY:
-        print("❌ Нет API ключа OpenRouter")
-        return None
-    
-    # Пробуем сначала основные рабочие модели
-    models_to_try = WORKING_MODELS + BACKUP_MODELS
-    
-    for model in models_to_try:
-        print(f"🤖 Пробую модель: {model}")
-        
-        prompt = """Ты - помощник для изучения английского языка. 
-        Сгенерируй простое предложение на английском с переводом на русский.
-        
-        Требования:
-        - Предложение из 5-10 слов
-        - Тема: повседневная жизнь (семья, работа, еда, путешествия, хобби)
-        - Уровень: легкий
-        
-        Верни ТОЛЬКО JSON:
-        {
-            "en": "предложение на английском",
-            "ru": "перевод на русский",
-            "topic": "тема с эмодзи",
-            "difficulty": "легко"
-        }
-        
-        Пример: {"en": "I like to drink coffee", "ru": "Я люблю пить кофе", "topic": "☕ Еда", "difficulty": "легко"}
-        """
-        
-        try:
-            response = requests.post(
-                OPENROUTER_URL,
-                headers={
-                    "Authorization": f"Bearer {OPENROUTER_KEY}",
-                    "Content-Type": "application/json",
-                    "HTTP-Referer": "https://github.com/dictant_bot",
-                    "X-Title": "English Dictant Bot"
-                },
-                json={
-                    "model": model,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.8,
-                    "max_tokens": 200
-                },
-                timeout=20
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                actual_model = result.get('model', model)
-                print(f"🤖 Реальная модель: {actual_model}")
-                
-                generated = result['choices'][0]['message']['content']
-                cleaned = generated.replace('```json', '').replace('```', '').strip()
-                
-                start = cleaned.find('{')
-                end = cleaned.rfind('}') + 1
-                
-                if start != -1 and end > start:
-                    sentence = json.loads(cleaned[start:end])
-                    if all(field in sentence for field in ['en', 'ru', 'topic']):
-                        if 'difficulty' not in sentence:
-                            sentence['difficulty'] = 'легко'
-                        print(f"✅ Успешно сгенерировано моделью {actual_model}")
-                        return sentence
-                    else:
-                        print(f"⚠️ Модель вернула неполные данные, пробуем следующую...")
-                else:
-                    print(f"⚠️ Модель не вернула JSON, пробуем следующую...")
-            else:
-                print(f"⚠️ Ошибка {response.status_code}, пробуем следующую...")
-                
-        except Exception as e:
-            print(f"⚠️ Ошибка с моделью {model}: {type(e).__name__}, пробуем следующую...")
-            continue
-    
-    print("❌ Ни одна модель не сработала")
-    return None
-
 def get_unique_ai_sentence(max_attempts=2):
     """Пытается получить уникальное AI-предложение"""
     for attempt in range(max_attempts):
         print(f"🔄 Попытка {attempt + 1} из {max_attempts}")
-        sentence = generate_with_openrouter()
+        sentence = generate_with_ai()
         if sentence:
             if not is_used(sentence):
                 print("✅ Найдено уникальное AI-предложение")
@@ -238,17 +344,16 @@ def send_telegram_message(text):
 def main():
     """Главная функция"""
     print("\n" + "="*50)
-    print("🚀 ЗАПУСК БОТА (ПРОВЕРЕННЫЕ МОДЕЛИ)")
+    print("🚀 ЗАПУСК БОТА (МУЛЬТИ-ПРОВАЙДЕР)")
     print("="*50)
     
     # Проверяем ключи
     print(f"🤖 BOT_TOKEN: {'✅' if BOT_TOKEN else '❌'}")
     print(f"📢 CHAT_ID: {'✅' if CHAT_ID else '❌'}")
-    print(f"🔑 OPENROUTER_KEY: {'✅' if OPENROUTER_KEY else '❌'}")
-    
-    print("\n📋 Используемые модели:")
-    for m in WORKING_MODELS:
-        print(f"   ✅ {m}")
+    print("\n📋 Доступные провайдеры:")
+    for p in PROVIDERS:
+        status = "✅" if p['enabled'] else "❌"
+        print(f"   {status} {p['name']}")
     
     current_hour = datetime.now().hour
     print(f"🕐 Текущее время UTC: {current_hour}:{datetime.now().minute}")
@@ -262,8 +367,8 @@ def main():
     
     sentence = None
     
-    # Пробуем AI
-    if OPENROUTER_KEY:
+    # Пробуем AI (все провайдеры по очереди)
+    if any(p['enabled'] for p in PROVIDERS):
         print("\n🤖 Пробую AI генерацию...")
         sentence = get_unique_ai_sentence()
     
