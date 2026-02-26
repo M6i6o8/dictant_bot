@@ -1,24 +1,30 @@
-name: ✅ Ответ в 13:10
+name: ✅ Ответ в 14:10
 
 on:
   schedule:
-    - cron: '10 10 * * *'
+    - cron: '10 11 * * *'  # 14:10 МСК (11:10 UTC)
   workflow_dispatch:
 
 jobs:
-  send_dictant:
+  send_answer:
     runs-on: ubuntu-latest
     steps:
       - name: 📥 Клонируем
         uses: actions/checkout@v4
-      - name: 🐍 Python
+        
+      - name: 🐍 Устанавливаем Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      - name: 📦 Зависимости
-        run: pip install requests google-generativeai
-      - name: 🤖 Запуск
+          
+      - name: 📦 Устанавливаем зависимости
+        run: |
+          pip install requests
+          pip install google-generativeai
+          
+      - name: 🤖 Отправляем ответ
         env:
+          RUN_TYPE: answer
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
           OPENROUTER_KEY: ${{ secrets.OPENROUTER_KEY }}
