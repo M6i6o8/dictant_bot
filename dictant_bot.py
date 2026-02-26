@@ -70,9 +70,9 @@ def load_sentences():
     except Exception as e:
         print(f"⚠️ Ошибка загрузки sentences.json: {e}")
         return [
-            {"id": 1, "en": "I like to read books", "ru": "Я люблю читать книги", "topic": "📚 Хобби", "difficulty": "легко", "explanation": "Простое настоящее время (Present Simple) для выражения привычки."},
-            {"id": 2, "en": "She works as a doctor", "ru": "Она работает врачом", "topic": "💼 Работа", "difficulty": "легко", "explanation": "Present Simple для описания профессии. После she добавляется -s к глаголу."},
-            {"id": 3, "en": "They are playing football", "ru": "Они играют в футбол", "topic": "⚽ Спорт", "difficulty": "легко", "explanation": "Present Continuous (are + playing) для действия, происходящего прямо сейчас."}
+            {"id": 1, "en": "I like to read books", "ru": "Я люблю читать книги", "topic": "📚 Хобби", "difficulty": "легко", "explanation": "Present Simple для выражения привычки. После I глагол без окончаний."},
+            {"id": 2, "en": "She works as a doctor", "ru": "Она работает врачом", "topic": "💼 Работа", "difficulty": "легко", "explanation": "Present Simple. После she/he/it добавляем -s к глаголу."},
+            {"id": 3, "en": "They are playing football now", "ru": "Они сейчас играют в футбол", "topic": "⚽ Спорт", "difficulty": "средне", "explanation": "Present Continuous (are + playing) для действия прямо сейчас."}
         ]
 
 def load_used_ids():
@@ -145,7 +145,7 @@ def generate_with_openrouter():
     
     Верни ТОЛЬКО JSON (без пояснений):
     {
-        "en": "предложение на английском",
+        "en": "предложение на английском (5-10 слов)",
         "ru": "перевод на русский",
         "topic": "тема с эмодзи",
         "difficulty": "легко/средне/сложно",
@@ -182,7 +182,7 @@ def generate_with_openrouter():
                 "model": model,
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.8,
-                "max_tokens": 300
+                "max_tokens": 400
             },
             timeout=25
         )
@@ -194,10 +194,6 @@ def generate_with_openrouter():
             
             sentence = extract_json(generated)
             if sentence and all(field in sentence for field in ['en', 'ru', 'topic', 'explanation']):
-                return sentence
-            elif sentence and all(field in sentence for field in ['en', 'ru', 'topic']):
-                # Если нет объяснения, добавляем стандартное
-                sentence['explanation'] = "Изучай грамматику и практикуйся каждый день!"
                 return sentence
     except Exception as e:
         print(f"⚠️ OpenRouter ошибка: {type(e).__name__}")
@@ -212,7 +208,7 @@ def generate_with_cerebras():
     models = ["llama3.1-8b", "llama3.3-70b"]
     model = random.choice(models)
     
-    prompt = """Ты - учитель английского языка. Сгенерируй предложение с разбором.
+    prompt = """Ты - учитель английского языка. Сгенерируй предложение с грамматическим разбором.
     
     Формат JSON:
     {
@@ -220,7 +216,7 @@ def generate_with_cerebras():
         "ru": "перевод на русский",
         "topic": "тема с эмодзи",
         "difficulty": "легко/средне",
-        "explanation": "короткое объяснение грамматики"
+        "explanation": "короткое объяснение грамматики (2-3 предложения)"
     }"""
     
     try:
@@ -234,7 +230,7 @@ def generate_with_cerebras():
                 "model": model,
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.8,
-                "max_tokens": 300
+                "max_tokens": 400
             },
             timeout=25
         )
@@ -245,9 +241,7 @@ def generate_with_cerebras():
             print(f"📝 Cerebras ответ: {generated[:150]}...")
             
             sentence = extract_json(generated)
-            if sentence and all(field in sentence for field in ['en', 'ru', 'topic']):
-                if 'explanation' not in sentence:
-                    sentence['explanation'] = "Разбор будет добавлен позже. А пока просто запомни перевод!"
+            if sentence and all(field in sentence for field in ['en', 'ru', 'topic', 'explanation']):
                 return sentence
     except Exception as e:
         print(f"⚠️ Cerebras ошибка: {type(e).__name__}")
@@ -268,9 +262,9 @@ def generate_with_gemini():
         Верни JSON:
         {
             "en": "предложение на английском",
-            "ru": "перевод",
-            "topic": "тема",
-            "difficulty": "легко",
+            "ru": "перевод на русский",
+            "topic": "тема с эмодзи",
+            "difficulty": "легко/средне",
             "explanation": "почему здесь такое время, почему такой порядок слов"
         }"""
         
@@ -279,9 +273,7 @@ def generate_with_gemini():
         print(f"📝 Gemini ответ: {generated[:150]}...")
         
         sentence = extract_json(generated)
-        if sentence and all(field in sentence for field in ['en', 'ru', 'topic']):
-            if 'explanation' not in sentence:
-                sentence['explanation'] = "Обрати внимание на грамматическую конструкцию. Потренируйся составлять похожие предложения."
+        if sentence and all(field in sentence for field in ['en', 'ru', 'topic', 'explanation']):
             return sentence
     except Exception as e:
         print(f"⚠️ Gemini ошибка: {type(e).__name__}")
@@ -354,7 +346,7 @@ def send_telegram_message(text):
 def main():
     """Главная функция"""
     print("\n" + "="*60)
-    print("🚀 ЗАПУСК БОТА (С РАЗБОРОМ ГРАММАТИКИ)")
+    print("🚀 ЗАПУСК БОТА (УТРО - ЗАДАНИЕ, ВЕЧЕР - РАЗБОР)")
     print("="*60)
     
     # Проверяем ключи
@@ -366,10 +358,10 @@ def main():
     current_hour = datetime.now().hour
     print(f"🕐 Текущее время UTC: {current_hour}:{datetime.now().minute}")
     
-    # Проверяем время отправки (для продакшена раскомментировать)
-    # if current_hour not in [6, 7]:
-    #     print("⏰ Не время для отправки. Бот запустится в 9:00 и 10:00 МСК")
-    #     return
+    # Проверяем время отправки (только 6 и 7 UTC = 9 и 10 МСК)
+    if current_hour not in [6, 7]:
+        print("⏰ Не время для отправки. Бот работает в 9:00 и 10:00 МСК")
+        return
     
     # Ищем предложение
     print("\n🔍 ИЩЕМ УНИКАЛЬНОЕ ПРЕДЛОЖЕНИЕ...")
@@ -388,37 +380,30 @@ def main():
     print(f"   🇬🇧 {sentence['en']}")
     print(f"   🇷🇺 {sentence['ru']}")
     print(f"   📚 {sentence['topic']}")
-    print(f"   📖 {sentence.get('explanation', 'Нет разбора')[:100]}...")
+    print(f"   📖 Разбор: {sentence.get('explanation', 'Есть в вечернем посте')[:100]}...")
     
-    # Формируем сообщение в зависимости от времени
-    if current_hour == 6:  # 9:00 МСК - задание
+    # ===== ФОРМИРУЕМ СООБЩЕНИЕ ПО ВРЕМЕНИ =====
+    if current_hour == 6:  # 9:00 МСК - только задание
         message = f"📝 <b>ЕЖЕДНЕВНЫЙ ДИКТАНТ</b>\n\n"
         message += f"<b>Тема:</b> {sentence['topic']}\n"
         message += f"<b>Сложность:</b> {sentence.get('difficulty', 'легко')}\n\n"
         message += f"🇬🇧 <b>Переведи на русский:</b>\n"
         message += f"<i>{sentence['en']}</i>\n\n"
-        message += f"⏳ <b>Правильный ответ и разбор придут сегодня в 10:00</b>\n"
+        message += f"⏳ <b>Правильный перевод и разбор грамматики придут сегодня в 10:00</b>"
         
-    elif current_hour == 7:  # 10:00 МСК - проверка
+        print("\n📨 Отправляем УТРЕННЕЕ задание...")
+        
+    elif current_hour == 7:  # 10:00 МСК - перевод + разбор
         message = f"📝 <b>ПРОВЕРКА ДИКТАНТА</b>\n\n"
         message += f"🇬🇧 <b>Было:</b> {sentence['en']}\n"
         message += f"🇷🇺 <b>Правильный перевод:</b>\n"
         message += f"<i>{sentence['ru']}</i>\n\n"
-        message += f"📊 <b>Разбор:</b>\n"
+        message += f"📊 <b>Грамматический разбор:</b>\n"
         message += f"{sentence.get('explanation', 'Продолжай практиковаться каждый день!')}\n\n"
-        message += f"💪 Хорошего дня!"
+        message += f"💪 Отличной работы!"
         
-    else:  # Тестовый режим
-        message = f"📝 <b>ТЕСТОВЫЙ ДИКТАНТ</b>\n\n"
-        message += f"<b>Тема:</b> {sentence['topic']}\n"
-        message += f"<b>Сложность:</b> {sentence.get('difficulty', 'легко')}\n\n"
-        message += f"🇬🇧 <b>Переведи на русский:</b>\n"
-        message += f"<i>{sentence['en']}</i>\n\n"
-        message += f"📖 <b>Разбор:</b>\n"
-        message += f"{sentence.get('explanation', 'Разбор будет в 10:00')}\n\n"
-        message += f"⏳ Тестовый режим"
+        print("\n📨 Отправляем ВЕЧЕРНИЙ разбор...")
     
-    print("\n📨 ОТПРАВЛЯЕМ В TELEGRAM...")
     result = send_telegram_message(message)
     
     if result:
