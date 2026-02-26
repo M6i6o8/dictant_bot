@@ -1,0 +1,27 @@
+name: 📝 Задание в 13:00
+
+on:
+  schedule:
+    - cron: '00 10 * * *'
+  workflow_dispatch:
+
+jobs:
+  send_dictant:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Клонируем
+        uses: actions/checkout@v4
+      - name: 🐍 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: 📦 Зависимости
+        run: pip install requests google-generativeai
+      - name: 🤖 Запуск
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+          OPENROUTER_KEY: ${{ secrets.OPENROUTER_KEY }}
+          CEREBRAS_KEY: ${{ secrets.CEREBRAS_KEY }}
+          GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
+        run: python dictant_bot.py
