@@ -21,6 +21,7 @@ BOT_TOKEN = os.environ.get('BOT_TOKEN')
 CHAT_ID = os.environ.get('CHAT_ID')
 SENTENCES_FILE = 'sentences.json'
 USED_SENTENCES_FILE = 'used_sentences.txt'
+LAST_SENTENCE_FILE = 'last_sentence.json'  # Новый файл для хранения последнего предложения
 
 # API ключи
 OPENROUTER_KEY = os.environ.get('OPENROUTER_KEY')
@@ -121,102 +122,86 @@ def is_used(sentence):
     fake_id = int(text_hash, 16) % 1000000
     return fake_id in used_ids
 
+# ===== ФУНКЦИИ СОХРАНЕНИЯ ПОСЛЕДНЕГО ПРЕДЛОЖЕНИЯ =====
+def save_last_sentence(sentence):
+    """Сохраняет последнее предложение для ответа"""
+    try:
+        with open(LAST_SENTENCE_FILE, 'w', encoding='utf-8') as f:
+            json.dump(sentence, f, ensure_ascii=False, indent=2)
+        print(f"✅ Последнее предложение сохранено")
+        return True
+    except Exception as e:
+        print(f"❌ Ошибка сохранения последнего предложения: {e}")
+        return False
+
+def load_last_sentence():
+    """Загружает последнее предложение для ответа"""
+    try:
+        if os.path.exists(LAST_SENTENCE_FILE):
+            with open(LAST_SENTENCE_FILE, 'r', encoding='utf-8') as f:
+                sentence = json.load(f)
+                print(f"✅ Последнее предложение загружено")
+                return sentence
+        return None
+    except Exception as e:
+        print(f"❌ Ошибка загрузки последнего предложения: {e}")
+        return None
+
 # ===== ФУНКЦИИ ГЕНЕРАЦИИ =====
-def generate_with_openrouter():
-    """Генерация через OpenRouter с разбором"""
-    if not OPENROUTER_KEY:
+def generate_with_gemini():
+    """Генерация через Google Gemini (приоритет 1)"""
+    if not GEMINI_AVAILABLE or not GEMINI_KEY:
         return None
     
-    models = [
-        "openrouter/free",
-        "arcee-ai/trinity-large-preview:free",
-        "z-ai/glm-4.5-air:free"
-    ]
-    
-    model = random.choice(models)
-    
-    prompt = """Ты - профессиональный преподаватель английского языка. 
-    Сгенерируй учебное предложение для студентов с подробным разбором.
-    
-    Требования:
-    - Предложение должно быть полезным для повседневной жизни
-    - Уровень: от легкого до среднего
-    - Разбор должен объяснять грамматику простыми словами
-    
-    Верни ТОЛЬКО JSON (без пояснений):
-    {
-        "en": "предложение на английском (5-10 слов)",
-        "ru": "перевод на русский",
-        "topic": "тема с эмодзи",
-        "difficulty": "легко/средне/сложно",
-        "explanation": "короткое грамматическое объяснение (2-3 предложения)"
-    }
-    
-    Примеры:
-    {
-        "en": "I have been learning English for three months",
-        "ru": "Я учу английский уже три месяца",
-        "topic": "📚 Образование",
-        "difficulty": "средне",
-        "explanation": "Present Perfect Continuous (have been + ing) указывает на действие, которое началось в прошлом и продолжается сейчас. 'For three months' показывает период времени."
-    }
-    
-    {
-        "en": "She usually drinks coffee in the morning",
-        "ru": "Она обычно пьет кофе по утрам",
-        "topic": "☕ Привычки",
-        "difficulty": "легко",
-        "explanation": "Present Simple с наречием usually для выражения привычки. После she добавляем -s к глаголу drink."
-    }"""
-    
     try:
-        response = requests.post(
-            OPENROUTER_URL,
-            headers={
-                "Authorization": f"Bearer {OPENROUTER_KEY}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://github.com/dictant_bot",
-                "X-Title": "English Dictant Bot"
-            },
-            json={
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.8,
-                "max_tokens": 400
-            },
-            timeout=25
-        )
+        genai.configure(api_key=GEMINI_KEY)
+        model = genai.GenerativeModel('gemini-1.5-flash')
         
-        if response.status_code == 200:
-            result = response.json()
-            generated = result['choices'][0]['message']['content']
-            print(f"📝 OpenRouter ответ: {generated[:150]}...")
-            
-            sentence = extract_json(generated)
-            if sentence and all(field in sentence for field in ['en', 'ru', 'topic', 'explanation']):
-                return sentence
+        prompt = """Ты - профессиональный преподаватель английского языка. Создай учебное предложение с подробным грамматическим разбором.
+        
+        Требования:
+        - Предложение должно быть полезным для повседневной жизни
+        - Уровень: от легкого до среднего
+        - Разбор должен быть понятным и подробным
+        
+        Верни ТОЛЬКО JSON:
+        {
+            "en": "предложение на английском (5-10 слов)",
+            "ru": "перевод на русский",
+            "topic": "тема с эмодзи",
+            "difficulty": "легко/средне",
+            "explanation": "подробное объяснение грамматики на русском (3-4 предложения)"
+        }"""
+        
+        response = model.generate_content(prompt)
+        generated = response.text
+        print(f"📝 Gemini ответ: {generated[:150]}...")
+        
+        sentence = extract_json(generated)
+        if sentence and all(field in sentence for field in ['en', 'ru', 'topic', 'explanation']):
+            return sentence
     except Exception as e:
-        print(f"⚠️ OpenRouter ошибка: {type(e).__name__}")
+        print(f"⚠️ Gemini ошибка: {type(e).__name__}")
     
     return None
 
 def generate_with_cerebras():
-    """Генерация через Cerebras с разбором"""
+    """Генерация через Cerebras (приоритет 2)"""
     if not CEREBRAS_KEY:
         return None
     
     models = ["llama3.1-8b", "llama3.3-70b"]
     model = random.choice(models)
     
-    prompt = """Ты - учитель английского языка. Сгенерируй предложение с грамматическим разбором.
+    prompt = """Ты - опытный преподаватель английского. Сгенерируй предложение с грамматическим разбором.
     
-    Формат JSON:
+    Верни ТОЛЬКО JSON:
     {
         "en": "предложение на английском",
         "ru": "перевод на русский",
         "topic": "тема с эмодзи",
         "difficulty": "легко/средне",
-        "explanation": "короткое объяснение грамматики (2-3 предложения)"
+        "explanation": "подробное объяснение грамматики на русском"
     }"""
     
     try:
@@ -248,45 +233,66 @@ def generate_with_cerebras():
     
     return None
 
-def generate_with_gemini():
-    """Генерация через Google Gemini с разбором"""
-    if not GEMINI_AVAILABLE or not GEMINI_KEY:
+def generate_with_openrouter():
+    """Генерация через OpenRouter (последний приоритет)"""
+    if not OPENROUTER_KEY:
         return None
     
+    models = [
+        "openrouter/free",
+        "arcee-ai/trinity-large-preview:free",
+        "z-ai/glm-4.5-air:free"
+    ]
+    
+    model = random.choice(models)
+    
+    prompt = """Сгенерируй учебное предложение на английском с переводом и разбором.
+    
+    Верни JSON:
+    {
+        "en": "предложение на английском",
+        "ru": "перевод на русский",
+        "topic": "тема с эмодзи",
+        "difficulty": "легко/средне",
+        "explanation": "объяснение грамматики"
+    }"""
+    
     try:
-        genai.configure(api_key=GEMINI_KEY)
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        response = requests.post(
+            OPENROUTER_URL,
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_KEY}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.8,
+                "max_tokens": 400
+            },
+            timeout=25
+        )
         
-        prompt = """Ты - репетитор английского. Создай учебное предложение с объяснением.
-        
-        Верни JSON:
-        {
-            "en": "предложение на английском",
-            "ru": "перевод на русский",
-            "topic": "тема с эмодзи",
-            "difficulty": "легко/средне",
-            "explanation": "почему здесь такое время, почему такой порядок слов"
-        }"""
-        
-        response = model.generate_content(prompt)
-        generated = response.text
-        print(f"📝 Gemini ответ: {generated[:150]}...")
-        
-        sentence = extract_json(generated)
-        if sentence and all(field in sentence for field in ['en', 'ru', 'topic', 'explanation']):
-            return sentence
+        if response.status_code == 200:
+            result = response.json()
+            generated = result['choices'][0]['message']['content']
+            print(f"📝 OpenRouter ответ: {generated[:150]}...")
+            
+            sentence = extract_json(generated)
+            if sentence and all(field in sentence for field in ['en', 'ru', 'topic', 'explanation']):
+                return sentence
     except Exception as e:
-        print(f"⚠️ Gemini ошибка: {type(e).__name__}")
+        print(f"⚠️ OpenRouter ошибка: {type(e).__name__}")
     
     return None
 
 # ===== ОСНОВНЫЕ ФУНКЦИИ =====
 def get_unique_ai_sentence():
-    """Пробует всех провайдеров по очереди"""
+    """Пробует всех провайдеров в правильном порядке"""
     providers = [
-        ("OpenRouter", generate_with_openrouter),
-        ("Cerebras", generate_with_cerebras),
-        ("Gemini", generate_with_gemini)
+        ("Gemini", generate_with_gemini),      # Первый - лучший
+        ("Cerebras", generate_with_cerebras),  # Второй
+        ("OpenRouter", generate_with_openrouter)  # Последний - так себе
     ]
     
     for name, func in providers:
@@ -351,9 +357,9 @@ def main():
     
     # Проверяем ключи
     print(f"\n📋 Наличие ключей:")
-    print(f"   OpenRouter: {'✅' if OPENROUTER_KEY else '❌'}")
-    print(f"   Cerebras: {'✅' if CEREBRAS_KEY else '❌'}")
     print(f"   Gemini: {'✅' if GEMINI_KEY else '❌'} (библиотека: {'✅' if GEMINI_AVAILABLE else '❌'})")
+    print(f"   Cerebras: {'✅' if CEREBRAS_KEY else '❌'}")
+    print(f"   OpenRouter: {'✅' if OPENROUTER_KEY else '❌'}")
     
     # Получаем тип запуска из переменной окружения
     run_type = os.environ.get('RUN_TYPE', 'unknown')
@@ -365,33 +371,51 @@ def main():
     print(f"🕐 Время UTC: {current_hour}:{current_minute}")
     print(f"🕐 Время МСК: {current_hour+3}:{current_minute}")
     
-    # Ищем предложение
-    print("\n🔍 ИЩЕМ ПРЕДЛОЖЕНИЕ...")
-    sentence = get_unique_ai_sentence()
-    
-    if not sentence:
-        print("\n📚 Пробую базу...")
-        sentence = get_unique_db_sentence()
-    
-    if not sentence:
-        print("❌ НЕТ ПРЕДЛОЖЕНИЯ")
-        return
-    
-    print(f"\n✅ ВЫБРАНО:")
-    print(f"   🇬🇧 {sentence['en']}")
-    print(f"   🇷🇺 {sentence['ru']}")
-    
-    # Формируем сообщение в зависимости от типа запуска
+    # Обрабатываем в зависимости от типа запуска
     if run_type == 'task':
+        # ЗАДАНИЕ - генерируем новое предложение
+        print("\n🔍 ГЕНЕРИРУЕМ НОВОЕ ПРЕДЛОЖЕНИЕ...")
+        sentence = get_unique_ai_sentence()
+        
+        if not sentence:
+            print("\n📚 Пробую базу...")
+            sentence = get_unique_db_sentence()
+        
+        if not sentence:
+            print("❌ НЕТ ПРЕДЛОЖЕНИЯ")
+            return
+        
+        # Сохраняем для ответа
+        save_last_sentence(sentence)
+        
+        print(f"\n✅ ВЫБРАНО:")
+        print(f"   🇬🇧 {sentence['en']}")
+        print(f"   🇷🇺 {sentence['ru']}")
+        
+        # Формируем сообщение
         message = f"📝 <b>ЕЖЕДНЕВНЫЙ ДИКТАНТ</b>\n\n"
         message += f"<b>Тема:</b> {sentence['topic']}\n"
         message += f"<b>Сложность:</b> {sentence.get('difficulty', 'легко')}\n\n"
         message += f"🇬🇧 <b>Переведи на русский:</b>\n"
         message += f"<i>{sentence['en']}</i>\n\n"
-        message += f"⏳ <b>Ответ и разбор придут сегодня в 14:10</b>"
+        message += f"⏳ <b>Ответ и разбор придут через 10 минут</b>"
+        
         print("\n📨 Отправляем ЗАДАНИЕ...")
         
     elif run_type == 'answer':
+        # ОТВЕТ - берем сохраненное предложение
+        print("\n🔍 ЗАГРУЖАЕМ СОХРАНЕННОЕ ПРЕДЛОЖЕНИЕ...")
+        sentence = load_last_sentence()
+        
+        if not sentence:
+            print("❌ НЕТ СОХРАНЕННОГО ПРЕДЛОЖЕНИЯ")
+            return
+        
+        print(f"\n✅ ЗАГРУЖЕНО:")
+        print(f"   🇬🇧 {sentence['en']}")
+        print(f"   🇷🇺 {sentence['ru']}")
+        
+        # Формируем сообщение
         message = f"📝 <b>ПРОВЕРКА ДИКТАНТА</b>\n\n"
         message += f"🇬🇧 <b>Было:</b> {sentence['en']}\n"
         message += f"🇷🇺 <b>Правильный перевод:</b>\n"
@@ -399,6 +423,7 @@ def main():
         message += f"📊 <b>Грамматический разбор:</b>\n"
         message += f"{sentence.get('explanation', 'Продолжай практиковаться каждый день!')}\n\n"
         message += f"💪 Отличной работы!"
+        
         print("\n📨 Отправляем ОТВЕТ...")
         
     else:
@@ -409,7 +434,8 @@ def main():
     result = send_telegram_message(message)
     
     if result:
-        mark_as_used(sentence)
+        if run_type == 'task':
+            mark_as_used(sentence)
         print("\n✅ ВСЕ ОПЕРАЦИИ ВЫПОЛНЕНЫ УСПЕШНО")
     else:
         print("\n❌ НЕ УДАЛОСЬ ОТПРАВИТЬ СООБЩЕНИЕ")
