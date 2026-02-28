@@ -21,7 +21,7 @@ BOT_TOKEN = os.environ.get('BOT_TOKEN')
 CHAT_ID = os.environ.get('CHAT_ID')
 SENTENCES_FILE = 'sentences.json'
 USED_SENTENCES_FILE = 'used_sentences.txt'
-LAST_SENTENCE_FILE = 'last_sentence.json'  # Новый файл для хранения последнего предложения
+LAST_SENTENCE_FILE = 'last_sentence.json'
 
 # API ключи
 OPENROUTER_KEY = os.environ.get('OPENROUTER_KEY')
@@ -48,10 +48,10 @@ def extract_json(text):
     for json_str in matches:
         # Пробуем разные способы парсинга
         for attempt in [
-            json_str,  # как есть
-            json_str.replace("'", '"'),  # одинарные кавычки -> двойные
-            json_str.replace('\n', ' ').replace('\r', ''),  # убираем переносы
-            re.sub(r',\s*}', '}', json_str)  # убираем лишние запятые в конце
+            json_str,
+            json_str.replace("'", '"'),
+            json_str.replace('\n', ' ').replace('\r', ''),
+            re.sub(r',\s*}', '}', json_str)
         ]:
             try:
                 data = json.loads(attempt)
@@ -126,25 +126,59 @@ def is_used(sentence):
 def save_last_sentence(sentence):
     """Сохраняет последнее предложение для ответа"""
     try:
+        # Создаем копию без лишних полей
+        save_data = {
+            'en': sentence['en'],
+            'ru': sentence['ru'],
+            'topic': sentence.get('topic', 'Тема'),
+            'difficulty': sentence.get('difficulty', 'легко'),
+            'explanation': sentence.get('explanation', 'Разбор будет позже')
+        }
+        
+        # Пробуем сохранить в текущую директорию
         with open(LAST_SENTENCE_FILE, 'w', encoding='utf-8') as f:
-            json.dump(sentence, f, ensure_ascii=False, indent=2)
-        print(f"✅ Последнее предложение сохранено")
-        return True
+            json.dump(save_data, f, ensure_ascii=False, indent=2)
+        
+        print(f"✅ Предложение сохранено в {LAST_SENTENCE_FILE}")
+        
+        # Проверяем что файл реально создался
+        if os.path.exists(LAST_SENTENCE_FILE):
+            file_size = os.path.getsize(LAST_SENTENCE_FILE)
+            print(f"📁 Размер файла: {file_size} байт")
+            return True
+        else:
+            print(f"❌ Файл {LAST_SENTENCE_FILE} не создался")
+            return False
+            
     except Exception as e:
-        print(f"❌ Ошибка сохранения последнего предложения: {e}")
+        print(f"❌ Ошибка сохранения предложения: {e}")
         return False
 
 def load_last_sentence():
     """Загружает последнее предложение для ответа"""
     try:
-        if os.path.exists(LAST_SENTENCE_FILE):
-            with open(LAST_SENTENCE_FILE, 'r', encoding='utf-8') as f:
-                sentence = json.load(f)
-                print(f"✅ Последнее предложение загружено")
-                return sentence
+        if not os.path.exists(LAST_SENTENCE_FILE):
+            print(f"⚠️ Файл {LAST_SENTENCE_FILE} не найден")
+            return None
+        
+        file_size = os.path.getsize(LAST_SENTENCE_FILE)
+        print(f"📁 Размер файла: {file_size} байт")
+        
+        if file_size == 0:
+            print("⚠️ Файл пустой")
+            return None
+        
+        with open(LAST_SENTENCE_FILE, 'r', encoding='utf-8') as f:
+            sentence = json.load(f)
+        
+        print(f"✅ Предложение загружено: {sentence.get('en', '')[:50]}...")
+        return sentence
+        
+    except json.JSONDecodeError as e:
+        print(f"❌ Ошибка парсинга JSON: {e}")
         return None
     except Exception as e:
-        print(f"❌ Ошибка загрузки последнего предложения: {e}")
+        print(f"❌ Ошибка загрузки: {e}")
         return None
 
 # ===== ФУНКЦИИ ГЕНЕРАЦИИ =====
@@ -290,9 +324,9 @@ def generate_with_openrouter():
 def get_unique_ai_sentence():
     """Пробует всех провайдеров в правильном порядке"""
     providers = [
-        ("Gemini", generate_with_gemini),      # Первый - лучший
-        ("Cerebras", generate_with_cerebras),  # Второй
-        ("OpenRouter", generate_with_openrouter)  # Последний - так себе
+        ("Gemini", generate_with_gemini),
+        ("Cerebras", generate_with_cerebras),
+        ("OpenRouter", generate_with_openrouter)
     ]
     
     for name, func in providers:
@@ -321,7 +355,9 @@ def get_unique_db_sentence():
         save_used_ids(set())
         available = sentences
     
-    return random.choice(available)
+    sentence = random.choice(available)
+    print(f"✅ Взято из базы (ID: {sentence['id']})")
+    return sentence
 
 def send_telegram_message(text):
     """Отправляет сообщение в Telegram"""
@@ -337,12 +373,18 @@ def send_telegram_message(text):
     }
     
     try:
+        print(f"📤 Отправка в Telegram...")
         response = requests.post(url, data=data, timeout=15)
+        
         if response.status_code == 200:
             result = response.json()
             if result.get('ok'):
-                print("✅ Сообщение отправлено в Telegram")
+                print("✅ Сообщение отправлено")
                 return result
+            else:
+                print(f"❌ Ошибка Telegram API: {result}")
+        else:
+            print(f"❌ HTTP ошибка: {response.status_code}")
     except Exception as e:
         print(f"❌ Ошибка отправки: {e}")
     
@@ -361,19 +403,24 @@ def main():
     print(f"   Cerebras: {'✅' if CEREBRAS_KEY else '❌'}")
     print(f"   OpenRouter: {'✅' if OPENROUTER_KEY else '❌'}")
     
-    # Получаем тип запуска из переменной окружения
+    # Получаем тип запуска
     run_type = os.environ.get('RUN_TYPE', 'unknown')
     print(f"📌 Тип запуска: {run_type}")
     
-    # Для логов показываем время
+    # Время для логов
     current_hour = datetime.now().hour
     current_minute = datetime.now().minute
     print(f"🕐 Время UTC: {current_hour}:{current_minute}")
     print(f"🕐 Время МСК: {current_hour+3}:{current_minute}")
     
-    # Обрабатываем в зависимости от типа запуска
+    # Проверяем текущую директорию
+    print(f"📂 Текущая директория: {os.getcwd()}")
+    print(f"📂 Содержимое: {os.listdir('.')}")
+    
+    sentence = None
+    
+    # ===== ЗАДАНИЕ =====
     if run_type == 'task':
-        # ЗАДАНИЕ - генерируем новое предложение
         print("\n🔍 ГЕНЕРИРУЕМ НОВОЕ ПРЕДЛОЖЕНИЕ...")
         sentence = get_unique_ai_sentence()
         
@@ -385,12 +432,16 @@ def main():
             print("❌ НЕТ ПРЕДЛОЖЕНИЯ")
             return
         
-        # Сохраняем для ответа
-        save_last_sentence(sentence)
-        
         print(f"\n✅ ВЫБРАНО:")
         print(f"   🇬🇧 {sentence['en']}")
         print(f"   🇷🇺 {sentence['ru']}")
+        
+        # Сохраняем для ответа
+        print("\n💾 Сохраняем предложение...")
+        if save_last_sentence(sentence):
+            print("✅ Предложение сохранено")
+        else:
+            print("⚠️ Не удалось сохранить, но продолжаем...")
         
         # Формируем сообщение
         message = f"📝 <b>ЕЖЕДНЕВНЫЙ ДИКТАНТ</b>\n\n"
@@ -401,19 +452,31 @@ def main():
         message += f"⏳ <b>Ответ и разбор придут через 10 минут</b>"
         
         print("\n📨 Отправляем ЗАДАНИЕ...")
-        
+    
+    # ===== ОТВЕТ =====
     elif run_type == 'answer':
-        # ОТВЕТ - берем сохраненное предложение
         print("\n🔍 ЗАГРУЖАЕМ СОХРАНЕННОЕ ПРЕДЛОЖЕНИЕ...")
         sentence = load_last_sentence()
         
         if not sentence:
-            print("❌ НЕТ СОХРАНЕННОГО ПРЕДЛОЖЕНИЯ")
-            return
-        
-        print(f"\n✅ ЗАГРУЖЕНО:")
-        print(f"   🇬🇧 {sentence['en']}")
-        print(f"   🇷🇺 {sentence['ru']}")
+            print("⚠️ НЕТ СОХРАНЕННОГО ПРЕДЛОЖЕНИЯ, генерируем новое...")
+            sentence = get_unique_ai_sentence()
+            
+            if not sentence:
+                print("\n📚 Пробую базу...")
+                sentence = get_unique_db_sentence()
+            
+            if not sentence:
+                print("❌ НЕТ ПРЕДЛОЖЕНИЯ")
+                return
+            
+            print(f"\n✅ СГЕНЕРИРОВАНО НОВОЕ:")
+            print(f"   🇬🇧 {sentence['en']}")
+            print(f"   🇷🇺 {sentence['ru']}")
+        else:
+            print(f"\n✅ ЗАГРУЖЕНО:")
+            print(f"   🇬🇧 {sentence['en']}")
+            print(f"   🇷🇺 {sentence['ru']}")
         
         # Формируем сообщение
         message = f"📝 <b>ПРОВЕРКА ДИКТАНТА</b>\n\n"
@@ -425,20 +488,28 @@ def main():
         message += f"💪 Отличной работы!"
         
         print("\n📨 Отправляем ОТВЕТ...")
-        
+    
     else:
         print(f"❌ Неизвестный тип запуска: {run_type}")
         return
     
-    # Отправляем
+    # Отправляем сообщение
     result = send_telegram_message(message)
     
     if result:
         if run_type == 'task':
+            # Помечаем как использованное только если это задание
             mark_as_used(sentence)
         print("\n✅ ВСЕ ОПЕРАЦИИ ВЫПОЛНЕНЫ УСПЕШНО")
     else:
         print("\n❌ НЕ УДАЛОСЬ ОТПРАВИТЬ СООБЩЕНИЕ")
+    
+    # Финальная проверка файлов
+    print(f"\n📂 Финальное содержимое директории:")
+    for f in os.listdir('.'):
+        if f.endswith('.json') or f.endswith('.txt'):
+            size = os.path.getsize(f) if os.path.exists(f) else 0
+            print(f"   {f}: {size} байт")
     
     print("="*60 + "\n")
 
