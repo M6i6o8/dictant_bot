@@ -1,0 +1,34 @@
+name: 🇬🇧 Ежедневный диктант
+
+on:
+  schedule:
+    - cron: '0 11 * * *'   # 14:00 МСК - задание
+    - cron: '10 11 * * *'  # 14:10 МСК - ответ
+  workflow_dispatch:
+
+jobs:
+  send_dictant:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Клонируем
+        uses: actions/checkout@v4
+        
+      - name: 🐍 Устанавливаем Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: 📦 Устанавливаем зависимости
+        run: |
+          pip install --upgrade pip
+          pip install requests
+          pip install google-genai
+          
+      - name: 🤖 Запускаем диктант
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+          GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
+          CEREBRAS_KEY: ${{ secrets.CEREBRAS_KEY }}
+          OPENROUTER_KEY: ${{ secrets.OPENROUTER_KEY }}
+        run: python dictant_bot.py
