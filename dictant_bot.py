@@ -29,10 +29,31 @@ CEREBRAS_KEY = os.environ.get('CEREBRAS_KEY')
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
 
-# Тип запуска определяем по минутам (10-19 = answer, остальное = task)
-current_minute = datetime.now().minute
-RUN_TYPE = 'answer' if 10 <= current_minute < 20 else 'task'
-print(f"📌 Тип запуска: {RUN_TYPE} (по минуте {current_minute})")
+# ===== ОПРЕДЕЛЕНИЕ ТИПА ЗАПУСКА ПО ВРЕМЕНИ =====
+def get_run_type():
+    """Определяет, задание сейчас или ответ, строго по времени"""
+    current_hour = datetime.now().hour
+    current_minute = datetime.now().minute
+    
+    print(f"🕐 Текущее время UTC: {current_hour}:{current_minute:02d}")
+    print(f"🕐 Текущее время МСК: {current_hour+3}:{current_minute:02d}")
+    
+    # ЗАДАНИЕ: 14:00-14:09 МСК (11:00-11:09 UTC)
+    if current_hour == 11 and 0 <= current_minute < 10:
+        print("📌 Режим: ЗАДАНИЕ")
+        return 'task'
+    
+    # ОТВЕТ: 14:10-14:19 МСК (11:10-11:19 UTC)
+    elif current_hour == 11 and 10 <= current_minute < 20:
+        print("📌 Режим: ОТВЕТ")
+        return 'answer'
+    
+    # Вне расписания - ничего не делаем
+    else:
+        print("📌 Режим: НЕ РАБОЧЕЕ ВРЕМЯ")
+        return 'idle'
+
+RUN_TYPE = get_run_type()
 
 # ===== УНИВЕРСАЛЬНЫЙ ИЗВЛЕКАТЕЛЬ JSON =====
 def extract_json(text):
@@ -172,7 +193,7 @@ def generate_with_gemini():
             print(f"📝 Gemini ответ получен")
             sentence = extract_json(response.text)
             if sentence and all(k in sentence for k in ['en', 'ru', 'topic', 'explanation']):
-                if len(sentence['en'].split()) >= 4:  # Проверяем длину
+                if len(sentence['en'].split()) >= 4:
                     return sentence
     except Exception as e:
         print(f"⚠️ Gemini ошибка: {type(e).__name__}")
@@ -241,6 +262,10 @@ def generate_with_openrouter():
         return None
     try:
         prompt = """Ты - учитель английского. Создай предложение.
+
+Требования:
+- Предложение из 5-10 слов
+- Тема: повседневная жизнь
 
 Верни JSON:
 {
@@ -351,7 +376,12 @@ def main():
     print(f"   Gemini: {'✅' if GEMINI_KEY else '❌'} (библиотека: {'✅' if GEMINI_AVAILABLE else '❌'})")
     print(f"   Cerebras: {'✅' if CEREBRAS_KEY else '❌'}")
     print(f"   OpenRouter: {'✅' if OPENROUTER_KEY else '❌'}")
-    print(f"   Тип запуска: {RUN_TYPE}")
+    
+    # Если не рабочее время - выходим
+    if RUN_TYPE == 'idle':
+        print("⏰ Не рабочее время. Бот работает строго с 14:00 до 14:20 МСК")
+        print("   Задание: 14:00-14:09, Ответ: 14:10-14:19")
+        return
     
     # Логика: в task генерируем и сохраняем, в answer загружаем
     if RUN_TYPE == 'task':
