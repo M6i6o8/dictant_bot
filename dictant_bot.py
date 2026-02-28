@@ -38,16 +38,20 @@ def get_run_type():
     print(f"🕐 Текущее время UTC: {current_hour}:{current_minute:02d}")
     print(f"🕐 Текущее время МСК: {current_hour+3}:{current_minute:02d}")
     
-    # ЗАДАНИЕ: 14:00-14:09 МСК (11:00-11:09 UTC)
-    if current_hour == 11 and 0 <= current_minute < 10:
+    # ЗАДАНИЕ: 18:00-18:19 МСК (15:00-15:19 UTC)
+    if current_hour == 15 and 0 <= current_minute < 20:
         print("📌 Режим: ЗАДАНИЕ")
         return 'task'
     
-    # ОТВЕТ: 14:10-14:19 МСК (11:10-11:19 UTC)
-    elif current_hour == 11 and 10 <= current_minute < 20:
+    # ОТВЕТ: 18:20-18:39 МСК (15:20-15:39 UTC)
+    elif current_hour == 15 and 20 <= current_minute < 40:
         print("📌 Режим: ОТВЕТ")
         return 'answer'
     
+    # Вне расписания - ничего не делаем
+    else:
+        print("📌 Режим: НЕ РАБОЧЕЕ ВРЕМЯ")
+        return 'idle'    
     # Вне расписания - ничего не делаем
     else:
         print("📌 Режим: НЕ РАБОЧЕЕ ВРЕМЯ")
@@ -451,3 +455,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
