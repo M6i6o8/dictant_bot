@@ -31,24 +31,29 @@ CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
 
 # ===== ОПРЕДЕЛЕНИЕ ТИПА ЗАПУСКА ПО ВРЕМЕНИ =====
 def get_run_type():
-    """Определяет, задание сейчас или ответ, строго по времени"""
+    """Определяет, задание сейчас или ответ, с запасными интервалами"""
     current_hour = datetime.now().hour
     current_minute = datetime.now().minute
     
     print(f"🕐 Текущее время UTC: {current_hour}:{current_minute:02d}")
     print(f"🕐 Текущее время МСК: {current_hour+3}:{current_minute:02d}")
     
-    # ЗАДАНИЕ: 18:30-18:59 МСК (15:30-15:59 UTC)
+    # ЗАДАНИЕ: 18:30-19:00 МСК (15:30-16:00 UTC)
     if current_hour == 15 and 30 <= current_minute < 60:
         print("📌 Режим: ЗАДАНИЕ")
         return 'task'
     
-    # ОТВЕТ: 19:00-19:29 МСК (16:00-16:29 UTC)
-    elif current_hour == 16 and 0 <= current_minute < 30:
+    # ОТВЕТ: 19:00-20:00 МСК (16:00-17:00 UTC) - ЦЕЛЫЙ ЧАС!
+    elif current_hour == 16 and 0 <= current_minute < 60:
         print("📌 Режим: ОТВЕТ")
         return 'answer'
     
-    # Вне расписания - ничего не делаем
+    # ДОПОЛНИТЕЛЬНО: если вдруг задание не отправилось, можно отправить в 19:30
+    elif current_hour == 16 and 30 <= current_minute < 60:
+        print("📌 Режим: ОТВЕТ (запасной)")
+        return 'answer'
+    
+    # Вне расписания
     else:
         print("📌 Режим: НЕ РАБОЧЕЕ ВРЕМЯ")
         return 'idle'
@@ -381,7 +386,7 @@ def main():
     if RUN_TYPE == 'idle':
         print("⏰ Не рабочее время. Бот работает по расписанию:")
         print("   Задание: 18:30 - 19:00 МСК")
-        print("   Ответ:   19:00 - 19:30 МСК")
+        print("   Ответ:   19:00 - 20:00 МСК (целый час на доставку!)")
         return
     
     # Логика: в task генерируем и сохраняем, в answer загружаем
@@ -412,7 +417,7 @@ def main():
         message += f"<b>Сложность:</b> {sentence.get('difficulty', 'легко')}\n\n"
         message += f"🇬🇧 <b>Переведи на русский:</b>\n"
         message += f"<i>{sentence['en']}</i>\n\n"
-        message += f"⏳ <b>Ответ и разбор придут сегодня в 19:00</b>"
+        message += f"⏳ <b>Ответ и разбор придут сегодня после 19:00</b>"
         
         print("\n📨 Отправляем ЗАДАНИЕ...")
         
@@ -452,7 +457,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
