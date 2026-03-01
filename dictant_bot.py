@@ -29,28 +29,51 @@ CEREBRAS_KEY = os.environ.get('CEREBRAS_KEY')
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
 
+# ===== НАСТРОЙКА ВРЕМЕНИ (МЕНЯЙ ТОЛЬКО ЗДЕСЬ!) =====
+TASK_HOUR_MSK = 23        # Час задания по Москве (0-23)
+TASK_MINUTE_MSK = 0       # Минута задания (0-59)
+ANSWER_HOUR_MSK = 0       # Час ответа по Москве (0-23)
+ANSWER_MINUTE_MSK = 0     # Минута ответа (0-59)
+
+# Автоматический пересчёт в UTC (МСК = UTC + 3)
+TASK_HOUR_UTC = TASK_HOUR_MSK - 3
+ANSWER_HOUR_UTC = ANSWER_HOUR_MSK - 3
+
+# Корректировка для отрицательных часов (переход через полночь)
+if TASK_HOUR_UTC < 0:
+    TASK_HOUR_UTC += 24
+if ANSWER_HOUR_UTC < 0:
+    ANSWER_HOUR_UTC += 24
+
+print(f"\n⚙️ НАСТРОЙКИ ВРЕМЕНИ:")
+print(f"   Задание: {TASK_HOUR_MSK:02d}:{TASK_MINUTE_MSK:02d} МСК = {TASK_HOUR_UTC:02d}:{TASK_MINUTE_MSK:02d} UTC")
+print(f"   Ответ:   {ANSWER_HOUR_MSK:02d}:{ANSWER_MINUTE_MSK:02d} МСК = {ANSWER_HOUR_UTC:02d}:{ANSWER_MINUTE_MSK:02d} UTC")
+print(f"   Интервал задания: 30 минут после {TASK_HOUR_MSK:02d}:{TASK_MINUTE_MSK:02d}")
+print(f"   Интервал ответа: 60 минут после {ANSWER_HOUR_MSK:02d}:{ANSWER_MINUTE_MSK:02d}")
+
 # ===== ОПРЕДЕЛЕНИЕ ТИПА ЗАПУСКА ПО ВРЕМЕНИ =====
 def get_run_type():
-    """Определяет, задание сейчас или ответ, с запасными интервалами"""
+    """Определяет, задание сейчас или ответ (автоматом подставляет часы)"""
     current_hour = datetime.now().hour
     current_minute = datetime.now().minute
     
-    print(f"🕐 Текущее время UTC: {current_hour}:{current_minute:02d}")
+    print(f"\n🕐 Текущее время UTC: {current_hour}:{current_minute:02d}")
     print(f"🕐 Текущее время МСК: {current_hour+3}:{current_minute:02d}")
     
-    # ЗАДАНИЕ: 18:30-19:00 МСК (15:30-16:00 UTC)
-    if current_hour == 15 and 30 <= current_minute < 60:
+    # ЗАДАНИЕ: 30 минут после указанного времени
+    task_start = TASK_MINUTE_MSK
+    task_end = TASK_MINUTE_MSK + 30
+    
+    if current_hour == TASK_HOUR_UTC and task_start <= current_minute < task_end:
         print("📌 Режим: ЗАДАНИЕ")
         return 'task'
     
-    # ОТВЕТ: 19:00-20:00 МСК (16:00-17:00 UTC) - ЦЕЛЫЙ ЧАС!
-    elif current_hour == 16 and 0 <= current_minute < 60:
-        print("📌 Режим: ОТВЕТ")
-        return 'answer'
+    # ОТВЕТ: 60 минут после указанного времени (целый час на доставку)
+    answer_start = ANSWER_MINUTE_MSK
+    answer_end = ANSWER_MINUTE_MSK + 60
     
-    # ДОПОЛНИТЕЛЬНО: если вдруг задание не отправилось, можно отправить в 19:30
-    elif current_hour == 16 and 30 <= current_minute < 60:
-        print("📌 Режим: ОТВЕТ (запасной)")
+    if current_hour == ANSWER_HOUR_UTC and answer_start <= current_minute < answer_end:
+        print("📌 Режим: ОТВЕТ")
         return 'answer'
     
     # Вне расписания
@@ -384,9 +407,10 @@ def main():
     
     # Если не рабочее время - выходим
     if RUN_TYPE == 'idle':
-        print("⏰ Не рабочее время. Бот работает по расписанию:")
-        print("   Задание: 18:30 - 19:00 МСК")
-        print("   Ответ:   19:00 - 20:00 МСК (целый час на доставку!)")
+        print("\n⏰ Не рабочее время. Бот работает по расписанию:")
+        print(f"   Задание: {TASK_HOUR_MSK:02d}:{TASK_MINUTE_MSK:02d} - {TASK_HOUR_MSK:02d}:{TASK_MINUTE_MSK+30:02d} МСК")
+        print(f"   Ответ:   {ANSWER_HOUR_MSK:02d}:{ANSWER_MINUTE_MSK:02d} - {ANSWER_HOUR_MSK:02d}:{ANSWER_MINUTE_MSK+60:02d} МСК")
+        print("="*60)
         return
     
     # Логика: в task генерируем и сохраняем, в answer загружаем
@@ -417,7 +441,7 @@ def main():
         message += f"<b>Сложность:</b> {sentence.get('difficulty', 'легко')}\n\n"
         message += f"🇬🇧 <b>Переведи на русский:</b>\n"
         message += f"<i>{sentence['en']}</i>\n\n"
-        message += f"⏳ <b>Ответ и разбор придут сегодня после 19:00</b>"
+        message += f"⏳ <b>Ответ и разбор придут сегодня в {ANSWER_HOUR_MSK:02d}:{ANSWER_MINUTE_MSK:02d}</b>"
         
         print("\n📨 Отправляем ЗАДАНИЕ...")
         
