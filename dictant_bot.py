@@ -31,9 +31,9 @@ CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
 
 # ===== НАСТРОЙКА ВРЕМЕНИ (МЕНЯЙ ТОЛЬКО ЗДЕСЬ!) =====
 TASK_HOUR_MSK = 23        # Час задания по Москве (0-23)
-TASK_MINUTE_MSK = 0       # Минута задания (0-59)
-ANSWER_HOUR_MSK = 0       # Час ответа по Москве (0-23)
-ANSWER_MINUTE_MSK = 0     # Минута ответа (0-59)
+TASK_MINUTE_MSK = 15       # Минута задания (0-59)
+ANSWER_HOUR_MSK = 23       # Час ответа по Москве (0-23)
+ANSWER_MINUTE_MSK = 30     # Минута ответа (0-59)
 
 # Автоматический пересчёт в UTC (МСК = UTC + 3)
 TASK_HOUR_UTC = TASK_HOUR_MSK - 3
@@ -481,3 +481,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
