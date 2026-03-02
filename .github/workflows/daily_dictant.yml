@@ -31,6 +31,7 @@ jobs:
         with:
           name: last-sentence
           path: ./
+          if-no-files-found: ignore
         continue-on-error: true  # Если артефакта нет - не падаем
       
       - name: 🐍 Устанавливаем Python
