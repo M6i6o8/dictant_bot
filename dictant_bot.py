@@ -5,6 +5,7 @@ import requests
 import hashlib
 import re
 from datetime import datetime
+import subprocess
 
 # Google Gemini
 try:
@@ -30,9 +31,9 @@ CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
 
 # ===== НАСТРОЙКА ВРЕМЕНИ =====
 TASK_HOUR_MSK = 14
-TASK_MINUTE_MSK = 18
-ANSWER_HOUR_MSK = 14
-ANSWER_MINUTE_MSK = 30
+TASK_MINUTE_MSK = 41
+ANSWER_HOUR_MSK = 15
+ANSWER_MINUTE_MSK = 0
 
 TASK_HOUR_UTC = TASK_HOUR_MSK - 3
 ANSWER_HOUR_UTC = ANSWER_HOUR_MSK - 3
@@ -55,20 +56,16 @@ print(f"   answer_sent.txt: {'✅' if os.path.exists(ANSWER_SENT_FILE) else '❌
 def get_run_type():
     current_hour = datetime.now().hour
     current_minute = datetime.now().minute
-    
+
     print(f"\n🕐 UTC: {current_hour}:{current_minute:02d}")
     print(f"🕐 МСК: {current_hour+3}:{current_minute:02d}")
-    
-    # Задание: 30 минут после TASK_HOUR_UTC
+
     if current_hour == TASK_HOUR_UTC and TASK_MINUTE_MSK <= current_minute < TASK_MINUTE_MSK + 30:
         print("📌 Режим: ЗАДАНИЕ")
         return 'task'
-    
-    # Ответ: 30 минут после ANSWER_HOUR_UTC
     if current_hour == ANSWER_HOUR_UTC and ANSWER_MINUTE_MSK <= current_minute < ANSWER_MINUTE_MSK + 30:
         print("📌 Режим: ОТВЕТ")
         return 'answer'
-    
     print("📌 Режим: НЕ РАБОЧЕЕ ВРЕМЯ")
     return 'idle'
 
@@ -137,15 +134,36 @@ def mark_answer_sent():
         f.write(datetime.now().strftime('%Y-%m-%d'))
     print("✅ Ответ отмечен как отправленный")
 
+def commit_and_push_files():
+    """Коммитит и пушит изменения файлов обратно в репозиторий"""
+    files_to_commit = []
+    if os.path.exists(LAST_SENTENCE_FILE):
+        files_to_commit.append(LAST_SENTENCE_FILE)
+    if os.path.exists(USED_SENTENCES_FILE):
+        files_to_commit.append(USED_SENTENCES_FILE)
+    if os.path.exists(ANSWER_SENT_FILE):
+        files_to_commit.append(ANSWER_SENT_FILE)
+
+    if not files_to_commit:
+        return
+
+    try:
+        subprocess.run(['git', 'config', '--global', 'user.name', 'github-actions[bot]'], check=True)
+        subprocess.run(['git', 'config', '--global', 'user.email', 'github-actions[bot]@users.noreply.github.com'], check=True)
+        subprocess.run(['git', 'add'] + files_to_commit, check=True)
+        subprocess.run(['git', 'commit', '-m', '[bot] Update state files'], check=True)
+        subprocess.run(['git', 'push'], check=True)
+        print("✅ Изменения закоммичены и отправлены в репозиторий")
+    except subprocess.CalledProcessError as e:
+        print(f"⚠️ Ошибка при коммите/пуше (возможно, нечего коммитить): {e}")
+
 # ===== ИЗВЛЕКАТЕЛЬ JSON =====
 def extract_json(text):
     if not text:
         return None
-    
     text = text.replace('```json', '').replace('```', '').strip()
     json_pattern = r'\{(?:[^{}]|(?:\{[^{}]*\}))*\}'
     matches = re.findall(json_pattern, text)
-    
     for json_str in matches:
         try:
             return json.loads(json_str)
@@ -162,15 +180,18 @@ def generate_with_gemini():
         return None
     try:
         client = genai.Client(api_key=GEMINI_KEY)
-        prompt = """Создай учебное предложение на английском с переводом.
-        Верни ТОЛЬКО JSON:
-        {
-            "en": "предложение на английском",
-            "ru": "перевод на русский",
-            "topic": "тема с эмодзи",
-            "difficulty": "легко/средне",
-            "explanation": "объяснение грамматики"
-        }"""
+        prompt = """Создай простое учебное предложение на английском для ежедневной практики перевода.
+Тема: повседневная жизнь, семья, работа, путешествия, хобби, еда.
+Уровень: легкий или средний.
+
+Верни ТОЛЬКО JSON:
+{
+    "en": "предложение на английском (5-10 слов)",
+    "ru": "перевод на русский",
+    "topic": "тема с эмодзи",
+    "difficulty": "легко/средне",
+    "explanation": "объяснение грамматики на русском"
+}"""
         response = client.models.generate_content(
             model='models/gemini-1.5-flash',
             contents=prompt
@@ -190,7 +211,8 @@ def generate_with_cerebras():
             headers={"Authorization": f"Bearer {CEREBRAS_KEY}"},
             json={
                 "model": "llama3.3-70b",
-                "messages": [{"role": "user", "content": "Создай JSON с en, ru, topic, explanation"}],
+                "messages": [{"role": "user", "content": """Создай JSON для изучения английского:
+{"en": "I usually drink coffee in the morning", "ru": "Я обычно пью кофе по утрам", "topic": "☕ Привычки", "difficulty": "легко", "explanation": "Present Simple для выражения привычки"}"""}],
                 "temperature": 0.8
             },
             timeout=15
@@ -209,7 +231,8 @@ def generate_with_openrouter():
             headers={"Authorization": f"Bearer {OPENROUTER_KEY}"},
             json={
                 "model": "openrouter/free",
-                "messages": [{"role": "user", "content": "Создай JSON с en, ru, topic, explanation"}]
+                "messages": [{"role": "user", "content": """Создай JSON с английским предложением и переводом.
+Пример: {"en": "My sister works in a hospital", "ru": "Моя сестра работает в больнице", "topic": "💼 Работа", "difficulty": "легко", "explanation": "Present Simple для фактов"}"""}]
             },
             timeout=15
         )
@@ -224,7 +247,7 @@ def get_unique_sentence():
         ("Cerebras", generate_with_cerebras),
         ("OpenRouter", generate_with_openrouter)
     ]
-    
+
     for name, func in providers:
         print(f"\n🤖 Пробую {name}...")
         s = func()
@@ -257,59 +280,61 @@ def main():
     print("\n" + "="*50)
     print("🚀 ЗАПУСК БОТА")
     print("="*50)
-    
+
     if RUN_TYPE == 'idle':
         print("⏰ Не рабочее время")
         print("="*50)
         return
-    
+
     if RUN_TYPE == 'task':
         print("\n🔍 ГЕНЕРИРУЮ ЗАДАНИЕ...")
         s = get_unique_sentence()
-        
+
         if not s:
             print("❌ Не удалось получить предложение")
             print("="*50)
             return
-        
+
         save_last_sentence(s)
         mark_as_used(s)
-        
+
         msg = f"📝 <b>ЕЖЕДНЕВНЫЙ ДИКТАНТ</b>\n\n"
         msg += f"<b>Тема:</b> {s['topic']}\n"
         msg += f"<b>Сложность:</b> {s.get('difficulty', 'легко')}\n\n"
         msg += f"🇬🇧 <b>Переведи на русский:</b>\n"
         msg += f"<i>{s['en']}</i>\n\n"
         msg += f"⏳ <b>Ответ и разбор придут сегодня в {ANSWER_HOUR_MSK:02d}:{ANSWER_MINUTE_MSK:02d}</b>"
-        
+
         if send_telegram_message(msg):
             print("\n✅ ЗАДАНИЕ ОТПРАВЛЕНО")
+            # КОММИТИМ ПОСЛЕ УСПЕШНОЙ ОТПРАВКИ
+            commit_and_push_files()
         else:
             print("\n❌ ОШИБКА ОТПРАВКИ")
-    
+
     else:  # answer
         print("\n🔍 ПРОВЕРЯЮ ЗАДАНИЕ...")
-        
+
         if not was_task_sent_today():
             print("❌ Задание не найдено, ответ не отправляю")
             print("="*50)
             return
-        
+
         if is_answer_sent_today():
             print("✅ Ответ уже был отправлен сегодня")
             print("="*50)
             return
-        
+
         print("\n🔍 ЗАГРУЖАЮ ПРЕДЛОЖЕНИЕ...")
         s = load_last_sentence()
-        
+
         if not s:
             print("❌ Не удалось загрузить предложение")
             print("="*50)
             return
-        
+
         explanation = s.get('explanation', 'Продолжай практиковаться каждый день!')
-        
+
         msg = f"📝 <b>ПРОВЕРКА ДИКТАНТА</b>\n\n"
         msg += f"🇬🇧 <b>Было:</b> {s['en']}\n"
         msg += f"🇷🇺 <b>Правильный перевод:</b>\n"
@@ -317,13 +342,15 @@ def main():
         msg += f"📊 <b>Грамматический разбор:</b>\n"
         msg += f"{explanation}\n\n"
         msg += f"💪 Отличной работы!"
-        
+
         if send_telegram_message(msg):
             mark_answer_sent()
             print("\n✅ ОТВЕТ ОТПРАВЛЕН")
+            # КОММИТИМ ПОСЛЕ УСПЕШНОЙ ОТПРАВКИ
+            commit_and_push_files()
         else:
             print("\n❌ ОШИБКА ОТПРАВКИ")
-    
+
     print("="*50)
 
 if __name__ == "__main__":
