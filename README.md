@@ -43,3 +43,4 @@ TASK_HOUR_MSK = 23        # Час задания
 TASK_MINUTE_MSK = 0       # Минута задания
 ANSWER_HOUR_MSK = 0       # Час ответа
 ANSWER_MINUTE_MSK = 0     # Минута ответа
+.
