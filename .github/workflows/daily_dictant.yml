@@ -1,44 +1,53 @@
 name: 🇬🇧 Ежедневный диктант
 
 on:
-  workflow_dispatch:
   schedule:
-    # ===== НАСТРОЙКА ВРЕМЕНИ (МЕНЯЙ ТОЛЬКО ТУТ!) =====
-    # Задание: каждый час проверяем, не пора ли
-    - cron: '*/5 * * * *'  # Каждые 5 минут
+    # Задание
+    - cron: '50 9 * * *'   # 12:50 МСК
+    - cron: '55 9 * * *'   # 12:55
+    - cron: '0 10 * * *'   # 13:00
+    - cron: '5 10 * * *'   # 13:05
+    - cron: '10 10 * * *'  # 13:10
+    # Ответ
+    - cron: '15 10 * * *'  # 13:15 МСК
+    - cron: '20 10 * * *'  # 13:20
+    - cron: '25 10 * * *'  # 13:25
+    - cron: '30 10 * * *'  # 13:30
+    - cron: '35 10 * * *'  # 13:35
+    - cron: '40 10 * * *'  # 13:40
+    - cron: '45 10 * * *'  # 13:45
+  workflow_dispatch:
 
 jobs:
   send_dictant:
     runs-on: ubuntu-latest
+    # Даём права на запись в репозиторий, чтобы пушить изменения
     permissions:
       contents: write
-    
     steps:
-      - name: 📥 Клонируем
+      - name: 📥 Клонируем репозиторий
         uses: actions/checkout@v4
         with:
+          # Важно: пул с историей, чтобы можно было пушить
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: 🐍 Python
+
+      - name: 🐍 Устанавливаем Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      
-      - name: 📦 Зависимости
+
+      - name: 📦 Устанавливаем зависимости
         run: |
+          pip install --upgrade pip
           pip install requests google-genai
-      
+
       - name: 🤖 Запускаем бота
+        id: run_bot
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
           GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
           CEREBRAS_KEY: ${{ secrets.CEREBRAS_KEY }}
           OPENROUTER_KEY: ${{ secrets.OPENROUTER_KEY }}
-          # Передаём время из переменных окружения
-          TASK_HOUR_MSK: "17"      # Час задания
-          TASK_MINUTE_MSK: "5"    # Минута задания
-          ANSWER_HOUR_MSK: "17"    # Час ответа
-          ANSWER_MINUTE_MSK: "15"   # Минута ответа
         run: python dictant_bot.py
