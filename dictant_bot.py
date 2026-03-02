@@ -4,8 +4,8 @@ import os
 import requests
 import hashlib
 import re
-from datetime import datetime
 import subprocess
+from datetime import datetime
 
 # Google Gemini
 try:
@@ -29,12 +29,20 @@ CEREBRAS_KEY = os.environ.get('CEREBRAS_KEY')
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
 
-# ===== НАСТРОЙКА ВРЕМЕНИ =====
-TASK_HOUR_MSK = 14
-TASK_MINUTE_MSK = 41
-ANSWER_HOUR_MSK = 15
-ANSWER_MINUTE_MSK = 0
+# ===== ВРЕМЯ БЕРЁМ ИЗ ПЕРЕМЕННЫХ ОКРУЖЕНИЯ =====
+try:
+    TASK_HOUR_MSK = int(os.environ.get('TASK_HOUR_MSK', '14'))
+    TASK_MINUTE_MSK = int(os.environ.get('TASK_MINUTE_MSK', '41'))
+    ANSWER_HOUR_MSK = int(os.environ.get('ANSWER_HOUR_MSK', '15'))
+    ANSWER_MINUTE_MSK = int(os.environ.get('ANSWER_MINUTE_MSK', '0'))
+except:
+    # Значения по умолчанию, если переменные не заданы
+    TASK_HOUR_MSK = 14
+    TASK_MINUTE_MSK = 41
+    ANSWER_HOUR_MSK = 15
+    ANSWER_MINUTE_MSK = 0
 
+# Пересчёт в UTC
 TASK_HOUR_UTC = TASK_HOUR_MSK - 3
 ANSWER_HOUR_UTC = ANSWER_HOUR_MSK - 3
 
@@ -43,8 +51,9 @@ if TASK_HOUR_UTC < 0:
 if ANSWER_HOUR_UTC < 0:
     ANSWER_HOUR_UTC += 24
 
-print(f"\n⚙️ ЗАДАНИЕ: {TASK_HOUR_MSK:02d}:{TASK_MINUTE_MSK:02d} МСК = {TASK_HOUR_UTC:02d}:{TASK_MINUTE_MSK:02d} UTC")
-print(f"⚙️ ОТВЕТ:   {ANSWER_HOUR_MSK:02d}:{ANSWER_MINUTE_MSK:02d} МСК = {ANSWER_HOUR_UTC:02d}:{ANSWER_MINUTE_MSK:02d} UTC")
+print(f"\n⚙️ Время из переменных окружения:")
+print(f"   Задание: {TASK_HOUR_MSK:02d}:{TASK_MINUTE_MSK:02d} МСК = {TASK_HOUR_UTC:02d}:{TASK_MINUTE_MSK:02d} UTC")
+print(f"   Ответ:   {ANSWER_HOUR_MSK:02d}:{ANSWER_MINUTE_MSK:02d} МСК = {ANSWER_HOUR_UTC:02d}:{ANSWER_MINUTE_MSK:02d} UTC")
 
 # ===== ПРОВЕРКА ФАЙЛОВ =====
 print(f"\n📁 Файлы перед запуском:")
@@ -56,16 +65,26 @@ print(f"   answer_sent.txt: {'✅' if os.path.exists(ANSWER_SENT_FILE) else '❌
 def get_run_type():
     current_hour = datetime.now().hour
     current_minute = datetime.now().minute
-
+    
     print(f"\n🕐 UTC: {current_hour}:{current_minute:02d}")
     print(f"🕐 МСК: {current_hour+3}:{current_minute:02d}")
-
-    if current_hour == TASK_HOUR_UTC and TASK_MINUTE_MSK <= current_minute < TASK_MINUTE_MSK + 30:
+    
+    # Задание: 30 минут после TASK_HOUR_UTC
+    task_start = TASK_MINUTE_MSK
+    task_end = TASK_MINUTE_MSK + 30
+    
+    if current_hour == TASK_HOUR_UTC and task_start <= current_minute < task_end:
         print("📌 Режим: ЗАДАНИЕ")
         return 'task'
-    if current_hour == ANSWER_HOUR_UTC and ANSWER_MINUTE_MSK <= current_minute < ANSWER_MINUTE_MSK + 30:
+    
+    # Ответ: 30 минут после ANSWER_HOUR_UTC
+    answer_start = ANSWER_MINUTE_MSK
+    answer_end = ANSWER_MINUTE_MSK + 30
+    
+    if current_hour == ANSWER_HOUR_UTC and answer_start <= current_minute < answer_end:
         print("📌 Режим: ОТВЕТ")
         return 'answer'
+    
     print("📌 Режим: НЕ РАБОЧЕЕ ВРЕМЯ")
     return 'idle'
 
@@ -135,18 +154,14 @@ def mark_answer_sent():
     print("✅ Ответ отмечен как отправленный")
 
 def commit_and_push_files():
-    """Коммитит и пушит изменения файлов обратно в репозиторий"""
     files_to_commit = []
-    if os.path.exists(LAST_SENTENCE_FILE):
-        files_to_commit.append(LAST_SENTENCE_FILE)
-    if os.path.exists(USED_SENTENCES_FILE):
-        files_to_commit.append(USED_SENTENCES_FILE)
-    if os.path.exists(ANSWER_SENT_FILE):
-        files_to_commit.append(ANSWER_SENT_FILE)
-
+    for f in [LAST_SENTENCE_FILE, USED_SENTENCES_FILE, ANSWER_SENT_FILE]:
+        if os.path.exists(f):
+            files_to_commit.append(f)
+    
     if not files_to_commit:
         return
-
+    
     try:
         subprocess.run(['git', 'config', '--global', 'user.name', 'github-actions[bot]'], check=True)
         subprocess.run(['git', 'config', '--global', 'user.email', 'github-actions[bot]@users.noreply.github.com'], check=True)
@@ -155,7 +170,7 @@ def commit_and_push_files():
         subprocess.run(['git', 'push'], check=True)
         print("✅ Изменения закоммичены и отправлены в репозиторий")
     except subprocess.CalledProcessError as e:
-        print(f"⚠️ Ошибка при коммите/пуше (возможно, нечего коммитить): {e}")
+        print(f"⚠️ Ошибка при коммите/пуше: {e}")
 
 # ===== ИЗВЛЕКАТЕЛЬ JSON =====
 def extract_json(text):
@@ -247,7 +262,7 @@ def get_unique_sentence():
         ("Cerebras", generate_with_cerebras),
         ("OpenRouter", generate_with_openrouter)
     ]
-
+    
     for name, func in providers:
         print(f"\n🤖 Пробую {name}...")
         s = func()
@@ -280,61 +295,60 @@ def main():
     print("\n" + "="*50)
     print("🚀 ЗАПУСК БОТА")
     print("="*50)
-
+    
     if RUN_TYPE == 'idle':
         print("⏰ Не рабочее время")
         print("="*50)
         return
-
+    
     if RUN_TYPE == 'task':
         print("\n🔍 ГЕНЕРИРУЮ ЗАДАНИЕ...")
         s = get_unique_sentence()
-
+        
         if not s:
             print("❌ Не удалось получить предложение")
             print("="*50)
             return
-
+        
         save_last_sentence(s)
         mark_as_used(s)
-
+        
         msg = f"📝 <b>ЕЖЕДНЕВНЫЙ ДИКТАНТ</b>\n\n"
         msg += f"<b>Тема:</b> {s['topic']}\n"
         msg += f"<b>Сложность:</b> {s.get('difficulty', 'легко')}\n\n"
         msg += f"🇬🇧 <b>Переведи на русский:</b>\n"
         msg += f"<i>{s['en']}</i>\n\n"
         msg += f"⏳ <b>Ответ и разбор придут сегодня в {ANSWER_HOUR_MSK:02d}:{ANSWER_MINUTE_MSK:02d}</b>"
-
+        
         if send_telegram_message(msg):
             print("\n✅ ЗАДАНИЕ ОТПРАВЛЕНО")
-            # КОММИТИМ ПОСЛЕ УСПЕШНОЙ ОТПРАВКИ
             commit_and_push_files()
         else:
             print("\n❌ ОШИБКА ОТПРАВКИ")
-
+    
     else:  # answer
         print("\n🔍 ПРОВЕРЯЮ ЗАДАНИЕ...")
-
+        
         if not was_task_sent_today():
             print("❌ Задание не найдено, ответ не отправляю")
             print("="*50)
             return
-
+        
         if is_answer_sent_today():
             print("✅ Ответ уже был отправлен сегодня")
             print("="*50)
             return
-
+        
         print("\n🔍 ЗАГРУЖАЮ ПРЕДЛОЖЕНИЕ...")
         s = load_last_sentence()
-
+        
         if not s:
             print("❌ Не удалось загрузить предложение")
             print("="*50)
             return
-
+        
         explanation = s.get('explanation', 'Продолжай практиковаться каждый день!')
-
+        
         msg = f"📝 <b>ПРОВЕРКА ДИКТАНТА</b>\n\n"
         msg += f"🇬🇧 <b>Было:</b> {s['en']}\n"
         msg += f"🇷🇺 <b>Правильный перевод:</b>\n"
@@ -342,15 +356,14 @@ def main():
         msg += f"📊 <b>Грамматический разбор:</b>\n"
         msg += f"{explanation}\n\n"
         msg += f"💪 Отличной работы!"
-
+        
         if send_telegram_message(msg):
             mark_answer_sent()
             print("\n✅ ОТВЕТ ОТПРАВЛЕН")
-            # КОММИТИМ ПОСЛЕ УСПЕШНОЙ ОТПРАВКИ
             commit_and_push_files()
         else:
             print("\n❌ ОШИБКА ОТПРАВКИ")
-
+    
     print("="*50)
 
 if __name__ == "__main__":
