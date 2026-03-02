@@ -37,8 +37,8 @@ jobs:
           CEREBRAS_KEY: ${{ secrets.CEREBRAS_KEY }}
           OPENROUTER_KEY: ${{ secrets.OPENROUTER_KEY }}
           # Передаём время из переменных окружения
-          TASK_HOUR_MSK: "15"      # Час задания
+          TASK_HOUR_MSK: "16"      # Час задания
           TASK_MINUTE_MSK: "30"    # Минута задания
-          ANSWER_HOUR_MSK: "15"    # Час ответа
+          ANSWER_HOUR_MSK: "16"    # Час ответа
           ANSWER_MINUTE_MSK: "45"   # Минута ответа
         run: python dictant_bot.py
