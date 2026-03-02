@@ -21,6 +21,7 @@ CHAT_ID = os.environ.get('CHAT_ID')
 SENTENCES_FILE = 'sentences.json'
 USED_SENTENCES_FILE = 'used_sentences.txt'
 LAST_SENTENCE_FILE = 'last_sentence.json'
+ANSWER_SENT_FILE = 'answer_sent.txt'  # Флаг, что ответ уже отправлен сегодня
 
 OPENROUTER_KEY = os.environ.get('OPENROUTER_KEY')
 GEMINI_KEY = os.environ.get('GEMINI_KEY')
@@ -31,9 +32,9 @@ CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
 
 # ===== НАСТРОЙКА ВРЕМЕНИ (МЕНЯЙ ТОЛЬКО ЗДЕСЬ!) =====
 TASK_HOUR_MSK = 23        # Час задания по Москве (0-23)
-TASK_MINUTE_MSK = 15       # Минута задания (0-59)
-ANSWER_HOUR_MSK = 23       # Час ответа по Москве (0-23)
-ANSWER_MINUTE_MSK = 30     # Минута ответа (0-59)
+TASK_MINUTE_MSK = 0       # Минута задания (0-59)
+ANSWER_HOUR_MSK = 0       # Час ответа по Москве (0-23)
+ANSWER_MINUTE_MSK = 0     # Минута ответа (0-59)
 
 # Автоматический пересчёт в UTC (МСК = UTC + 3)
 TASK_HOUR_UTC = TASK_HOUR_MSK - 3
@@ -49,7 +50,31 @@ print(f"\n⚙️ НАСТРОЙКИ ВРЕМЕНИ:")
 print(f"   Задание: {TASK_HOUR_MSK:02d}:{TASK_MINUTE_MSK:02d} МСК = {TASK_HOUR_UTC:02d}:{TASK_MINUTE_MSK:02d} UTC")
 print(f"   Ответ:   {ANSWER_HOUR_MSK:02d}:{ANSWER_MINUTE_MSK:02d} МСК = {ANSWER_HOUR_UTC:02d}:{ANSWER_MINUTE_MSK:02d} UTC")
 print(f"   Интервал задания: 30 минут после {TASK_HOUR_MSK:02d}:{TASK_MINUTE_MSK:02d}")
-print(f"   Интервал ответа: 60 минут после {ANSWER_HOUR_MSK:02d}:{ANSWER_MINUTE_MSK:02d}")
+print(f"   Интервал ответа: 30 минут после {ANSWER_HOUR_MSK:02d}:{ANSWER_MINUTE_MSK:02d}")
+
+# ===== ФУНКЦИИ ПРОВЕРКИ ОТПРАВКИ =====
+def was_task_sent_today():
+    """Проверяет, было ли отправлено задание сегодня"""
+    if os.path.exists(LAST_SENTENCE_FILE):
+        mod_time = datetime.fromtimestamp(os.path.getmtime(LAST_SENTENCE_FILE))
+        today = datetime.now().date()
+        return mod_time.date() == today
+    return False
+
+def is_answer_sent_today():
+    """Проверяет, отправлен ли уже ответ сегодня"""
+    if os.path.exists(ANSWER_SENT_FILE):
+        with open(ANSWER_SENT_FILE, 'r') as f:
+            last_date = f.read().strip()
+            today = datetime.now().strftime('%Y-%m-%d')
+            return last_date == today
+    return False
+
+def mark_answer_sent():
+    """Отмечает, что ответ отправлен сегодня"""
+    with open(ANSWER_SENT_FILE, 'w') as f:
+        f.write(datetime.now().strftime('%Y-%m-%d'))
+    print("✅ Отметка об ответе сохранена")
 
 # ===== ОПРЕДЕЛЕНИЕ ТИПА ЗАПУСКА ПО ВРЕМЕНИ =====
 def get_run_type():
@@ -68,9 +93,9 @@ def get_run_type():
         print("📌 Режим: ЗАДАНИЕ")
         return 'task'
     
-    # ОТВЕТ: 60 минут после указанного времени (целый час на доставку)
+    # ОТВЕТ: 30 минут после указанного времени
     answer_start = ANSWER_MINUTE_MSK
-    answer_end = ANSWER_MINUTE_MSK + 60
+    answer_end = ANSWER_MINUTE_MSK + 30
     
     if current_hour == ANSWER_HOUR_UTC and answer_start <= current_minute < answer_end:
         print("📌 Режим: ОТВЕТ")
@@ -329,6 +354,32 @@ def generate_with_openrouter():
         print(f"⚠️ OpenRouter ошибка: {type(e).__name__}")
     return None
 
+# ===== ФУНКЦИЯ ГЕНЕРАЦИИ РАЗБОРА ЕСЛИ AI НЕ ДАЛ =====
+def generate_fallback_explanation(sentence):
+    """Создаёт разбор на основе предложения, если AI не дал нормального"""
+    explanation = sentence.get('explanation', '')
+    
+    # Если разбора нет или это заглушка
+    if not explanation or explanation == "Продолжай практиковаться каждый день!":
+        text = sentence['en']
+        words = len(text.split())
+        
+        # Определяем время по ключевым словам
+        if 'ing' in text and ('am' in text or 'is' in text or 'are' in text):
+            return f"Present Continuous: действие происходит прямо сейчас или временно. В предложении {words} слов."
+        elif 'have' in text.lower() or 'has' in text.lower():
+            if 'been' in text.lower():
+                return f"Present Perfect Continuous: действие началось в прошлом и продолжается до сих пор. В предложении {words} слов."
+            return f"Present Perfect: действие завершилось к настоящему моменту, но важен результат. В предложении {words} слов."
+        elif 'will' in text.lower():
+            return f"Future Simple (will + глагол) для выражения будущего действия. В предложении {words} слов."
+        elif 'ed ' in text or text.lower().endswith('ed'):
+            return f"Past Simple для действия в прошлом. В предложении {words} слов."
+        else:
+            return f"Present Simple для регулярных действий или фактов. В предложении {words} слов."
+    
+    return explanation
+
 # ===== ОСНОВНЫЕ ФУНКЦИИ =====
 def get_unique_ai_sentence():
     """Пробует всех провайдеров в порядке приоритета"""
@@ -409,7 +460,7 @@ def main():
     if RUN_TYPE == 'idle':
         print("\n⏰ Не рабочее время. Бот работает по расписанию:")
         print(f"   Задание: {TASK_HOUR_MSK:02d}:{TASK_MINUTE_MSK:02d} - {TASK_HOUR_MSK:02d}:{TASK_MINUTE_MSK+30:02d} МСК")
-        print(f"   Ответ:   {ANSWER_HOUR_MSK:02d}:{ANSWER_MINUTE_MSK:02d} - {ANSWER_HOUR_MSK:02d}:{ANSWER_MINUTE_MSK+60:02d} МСК")
+        print(f"   Ответ:   {ANSWER_HOUR_MSK:02d}:{ANSWER_MINUTE_MSK:02d} - {ANSWER_HOUR_MSK:02d}:{ANSWER_MINUTE_MSK+30:02d} МСК")
         print("="*60)
         return
     
@@ -446,6 +497,16 @@ def main():
         print("\n📨 Отправляем ЗАДАНИЕ...")
         
     else:  # answer
+        # Проверяем, было ли задание сегодня
+        if not was_task_sent_today():
+            print("❌ Задание сегодня не отправлялось, ответ не шлём")
+            return
+        
+        # Проверяем, не отправляли ли уже ответ сегодня
+        if is_answer_sent_today():
+            print("✅ Ответ уже был отправлен сегодня, пропускаем")
+            return
+        
         print("\n🔍 ЗАГРУЖАЕМ СОХРАНЕННОЕ ПРЕДЛОЖЕНИЕ...")
         sentence = load_last_sentence()
         
@@ -460,18 +521,31 @@ def main():
         print(f"   🇬🇧 {sentence['en']}")
         print(f"   🇷🇺 {sentence['ru']}")
         
+        # Генерируем разбор, если AI не дал нормального
+        explanation = generate_fallback_explanation(sentence)
+        
         # Формируем сообщение
         message = f"📝 <b>ПРОВЕРКА ДИКТАНТА</b>\n\n"
         message += f"🇬🇧 <b>Было:</b> {sentence['en']}\n"
         message += f"🇷🇺 <b>Правильный перевод:</b>\n"
         message += f"<i>{sentence['ru']}</i>\n\n"
         message += f"📊 <b>Грамматический разбор:</b>\n"
-        message += f"{sentence.get('explanation', 'Продолжай практиковаться каждый день!')}\n\n"
+        message += f"{explanation}\n\n"
         message += f"💪 Отличной работы!"
         
         print("\n📨 Отправляем ОТВЕТ...")
+        
+        # Отправляем сообщение
+        if send_telegram_message(message):
+            mark_answer_sent()
+            print("\n✅ ВСЕ ОПЕРАЦИИ ВЫПОЛНЕНЫ УСПЕШНО")
+        else:
+            print("\n❌ НЕ УДАЛОСЬ ОТПРАВИТЬ СООБЩЕНИЕ")
+        
+        print("="*60 + "\n")
+        return
     
-    # Отправляем сообщение
+    # Отправляем сообщение (для task режима)
     if send_telegram_message(message):
         print("\n✅ ВСЕ ОПЕРАЦИИ ВЫПОЛНЕНЫ УСПЕШНО")
     else:
@@ -481,4 +555,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
