@@ -29,10 +29,10 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
 
 # ===== НАСТРОЙКА ВРЕМЕНИ =====
-TASK_HOUR_MSK = 13
-TASK_MINUTE_MSK = 41
+TASK_HOUR_MSK = 14
+TASK_MINUTE_MSK = 18
 ANSWER_HOUR_MSK = 14
-ANSWER_MINUTE_MSK = 0
+ANSWER_MINUTE_MSK = 30
 
 TASK_HOUR_UTC = TASK_HOUR_MSK - 3
 ANSWER_HOUR_UTC = ANSWER_HOUR_MSK - 3
@@ -45,8 +45,8 @@ if ANSWER_HOUR_UTC < 0:
 print(f"\n⚙️ ЗАДАНИЕ: {TASK_HOUR_MSK:02d}:{TASK_MINUTE_MSK:02d} МСК = {TASK_HOUR_UTC:02d}:{TASK_MINUTE_MSK:02d} UTC")
 print(f"⚙️ ОТВЕТ:   {ANSWER_HOUR_MSK:02d}:{ANSWER_MINUTE_MSK:02d} МСК = {ANSWER_HOUR_UTC:02d}:{ANSWER_MINUTE_MSK:02d} UTC")
 
-# ===== ПРОВЕРКА НАЛИЧИЯ ФАЙЛОВ =====
-print(f"\n📁 Проверка файлов перед запуском:")
+# ===== ПРОВЕРКА ФАЙЛОВ =====
+print(f"\n📁 Файлы перед запуском:")
 print(f"   last_sentence.json: {'✅' if os.path.exists(LAST_SENTENCE_FILE) else '❌'}")
 print(f"   used_sentences.txt: {'✅' if os.path.exists(USED_SENTENCES_FILE) else '❌'}")
 print(f"   answer_sent.txt: {'✅' if os.path.exists(ANSWER_SENT_FILE) else '❌'}")
@@ -61,34 +61,20 @@ def get_run_type():
     
     # Задание: 30 минут после TASK_HOUR_UTC
     if current_hour == TASK_HOUR_UTC and TASK_MINUTE_MSK <= current_minute < TASK_MINUTE_MSK + 30:
+        print("📌 Режим: ЗАДАНИЕ")
         return 'task'
     
     # Ответ: 30 минут после ANSWER_HOUR_UTC
     if current_hour == ANSWER_HOUR_UTC and ANSWER_MINUTE_MSK <= current_minute < ANSWER_MINUTE_MSK + 30:
+        print("📌 Режим: ОТВЕТ")
         return 'answer'
     
+    print("📌 Режим: НЕ РАБОЧЕЕ ВРЕМЯ")
     return 'idle'
 
 RUN_TYPE = get_run_type()
-print(f"📌 Режим: {RUN_TYPE}")
 
-# ===== ФУНКЦИИ =====
-def extract_json(text):
-    if not text:
-        return None
-    text = text.replace('```json', '').replace('```', '').strip()
-    json_pattern = r'\{(?:[^{}]|(?:\{[^{}]*\}))*\}'
-    matches = re.findall(json_pattern, text)
-    for json_str in matches:
-        try:
-            return json.loads(json_str)
-        except:
-            try:
-                return json.loads(json_str.replace("'", '"'))
-            except:
-                continue
-    return None
-
+# ===== ФУНКЦИИ РАБОТЫ С ФАЙЛАМИ =====
 def load_used_ids():
     try:
         if os.path.exists(USED_SENTENCES_FILE):
@@ -121,7 +107,7 @@ def is_used(sentence):
 def save_last_sentence(sentence):
     try:
         with open(LAST_SENTENCE_FILE, 'w', encoding='utf-8') as f:
-            json.dump(sentence, f, ensure_ascii=False)
+            json.dump(sentence, f, ensure_ascii=False, indent=2)
         print(f"✅ Предложение сохранено в {LAST_SENTENCE_FILE}")
         return True
     except Exception as e:
@@ -149,31 +135,68 @@ def is_answer_sent_today():
 def mark_answer_sent():
     with open(ANSWER_SENT_FILE, 'w') as f:
         f.write(datetime.now().strftime('%Y-%m-%d'))
+    print("✅ Ответ отмечен как отправленный")
 
+# ===== ИЗВЛЕКАТЕЛЬ JSON =====
+def extract_json(text):
+    if not text:
+        return None
+    
+    text = text.replace('```json', '').replace('```', '').strip()
+    json_pattern = r'\{(?:[^{}]|(?:\{[^{}]*\}))*\}'
+    matches = re.findall(json_pattern, text)
+    
+    for json_str in matches:
+        try:
+            return json.loads(json_str)
+        except:
+            try:
+                return json.loads(json_str.replace("'", '"'))
+            except:
+                continue
+    return None
+
+# ===== ГЕНЕРАЦИЯ =====
 def generate_with_gemini():
     if not GEMINI_AVAILABLE or not GEMINI_KEY:
         return None
     try:
         client = genai.Client(api_key=GEMINI_KEY)
-        prompt = """Создай JSON для изучения английского:
-        {"en": "...", "ru": "...", "topic": "...", "explanation": "..."}"""
+        prompt = """Создай учебное предложение на английском с переводом.
+        Верни ТОЛЬКО JSON:
+        {
+            "en": "предложение на английском",
+            "ru": "перевод на русский",
+            "topic": "тема с эмодзи",
+            "difficulty": "легко/средне",
+            "explanation": "объяснение грамматики"
+        }"""
         response = client.models.generate_content(
             model='models/gemini-1.5-flash',
             contents=prompt
         )
-        return extract_json(response.text)
-    except:
-        return None
+        if response and response.text:
+            return extract_json(response.text)
+    except Exception as e:
+        print(f"⚠️ Gemini ошибка: {type(e).__name__}")
+    return None
 
 def generate_with_cerebras():
     if not CEREBRAS_KEY:
         return None
     try:
-        r = requests.post(CEREBRAS_URL, 
+        response = requests.post(
+            CEREBRAS_URL,
             headers={"Authorization": f"Bearer {CEREBRAS_KEY}"},
-            json={"model": "llama3.3-70b", "messages": [{"role": "user", "content": "JSON с en, ru, topic"}]},
-            timeout=15)
-        return extract_json(r.json()['choices'][0]['message']['content']) if r.status_code == 200 else None
+            json={
+                "model": "llama3.3-70b",
+                "messages": [{"role": "user", "content": "Создай JSON с en, ru, topic, explanation"}],
+                "temperature": 0.8
+            },
+            timeout=15
+        )
+        if response.status_code == 200:
+            return extract_json(response.json()['choices'][0]['message']['content'])
     except:
         return None
 
@@ -181,45 +204,72 @@ def generate_with_openrouter():
     if not OPENROUTER_KEY:
         return None
     try:
-        r = requests.post(OPENROUTER_URL,
+        response = requests.post(
+            OPENROUTER_URL,
             headers={"Authorization": f"Bearer {OPENROUTER_KEY}"},
-            json={"model": "openrouter/free", "messages": [{"role": "user", "content": "JSON с en, ru, topic"}]},
-            timeout=15)
-        return extract_json(r.json()['choices'][0]['message']['content']) if r.status_code == 200 else None
+            json={
+                "model": "openrouter/free",
+                "messages": [{"role": "user", "content": "Создай JSON с en, ru, topic, explanation"}]
+            },
+            timeout=15
+        )
+        if response.status_code == 200:
+            return extract_json(response.json()['choices'][0]['message']['content'])
     except:
         return None
 
 def get_unique_sentence():
-    providers = [generate_with_gemini, generate_with_cerebras, generate_with_openrouter]
-    for func in providers:
+    providers = [
+        ("Gemini", generate_with_gemini),
+        ("Cerebras", generate_with_cerebras),
+        ("OpenRouter", generate_with_openrouter)
+    ]
+    
+    for name, func in providers:
+        print(f"\n🤖 Пробую {name}...")
         s = func()
         if s and all(k in s for k in ['en', 'ru', 'topic']):
             if not is_used(s):
+                print(f"✅ {name} сработал!")
                 return s
+            else:
+                print(f"⚠️ Предложение уже использовалось")
     return None
 
 def send_telegram_message(text):
     try:
-        r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+        response = requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
             data={'chat_id': CHAT_ID, 'text': text, 'parse_mode': 'HTML'},
-            timeout=10)
-        return r.status_code == 200 and r.json().get('ok')
-    except:
-        return False
+            timeout=10
+        )
+        if response.status_code == 200 and response.json().get('ok'):
+            print("✅ Сообщение отправлено в Telegram")
+            return True
+        else:
+            print(f"❌ Ошибка Telegram: {response.status_code}")
+    except Exception as e:
+        print(f"❌ Ошибка отправки: {type(e).__name__}")
+    return False
 
 # ===== ГЛАВНАЯ =====
 def main():
     print("\n" + "="*50)
+    print("🚀 ЗАПУСК БОТА")
+    print("="*50)
     
     if RUN_TYPE == 'idle':
-        print("⏰ Не время")
+        print("⏰ Не рабочее время")
+        print("="*50)
         return
     
     if RUN_TYPE == 'task':
-        print("\n🔍 Генерирую задание...")
+        print("\n🔍 ГЕНЕРИРУЮ ЗАДАНИЕ...")
         s = get_unique_sentence()
+        
         if not s:
-            print("❌ Нет предложения")
+            print("❌ Не удалось получить предложение")
+            print("="*50)
             return
         
         save_last_sentence(s)
@@ -227,47 +277,54 @@ def main():
         
         msg = f"📝 <b>ЕЖЕДНЕВНЫЙ ДИКТАНТ</b>\n\n"
         msg += f"<b>Тема:</b> {s['topic']}\n"
-        msg += f"🇬🇧 <b>Переведи:</b>\n<i>{s['en']}</i>\n\n"
-        msg += f"⏳ <b>Ответ в {ANSWER_HOUR_MSK:02d}:{ANSWER_MINUTE_MSK:02d}</b>"
+        msg += f"<b>Сложность:</b> {s.get('difficulty', 'легко')}\n\n"
+        msg += f"🇬🇧 <b>Переведи на русский:</b>\n"
+        msg += f"<i>{s['en']}</i>\n\n"
+        msg += f"⏳ <b>Ответ и разбор придут сегодня в {ANSWER_HOUR_MSK:02d}:{ANSWER_MINUTE_MSK:02d}</b>"
         
         if send_telegram_message(msg):
-            print("✅ Задание отправлено")
+            print("\n✅ ЗАДАНИЕ ОТПРАВЛЕНО")
         else:
-            print("❌ Ошибка")
+            print("\n❌ ОШИБКА ОТПРАВКИ")
     
     else:  # answer
+        print("\n🔍 ПРОВЕРЯЮ ЗАДАНИЕ...")
+        
         if not was_task_sent_today():
-            print("❌ Нет задания")
+            print("❌ Задание не найдено, ответ не отправляю")
+            print("="*50)
             return
         
         if is_answer_sent_today():
-            print("✅ Ответ уже был")
+            print("✅ Ответ уже был отправлен сегодня")
+            print("="*50)
             return
         
+        print("\n🔍 ЗАГРУЖАЮ ПРЕДЛОЖЕНИЕ...")
         s = load_last_sentence()
+        
         if not s:
-            print("❌ Ошибка загрузки")
+            print("❌ Не удалось загрузить предложение")
+            print("="*50)
             return
         
-        expl = s.get('explanation', 'Продолжай практиковаться!')
+        explanation = s.get('explanation', 'Продолжай практиковаться каждый день!')
         
-        msg = f"📝 <b>ПРОВЕРКА</b>\n\n"
+        msg = f"📝 <b>ПРОВЕРКА ДИКТАНТА</b>\n\n"
         msg += f"🇬🇧 <b>Было:</b> {s['en']}\n"
-        msg += f"🇷🇺 <b>Перевод:</b> {s['ru']}\n\n"
-        msg += f"📊 <b>Разбор:</b>\n{expl}"
+        msg += f"🇷🇺 <b>Правильный перевод:</b>\n"
+        msg += f"<i>{s['ru']}</i>\n\n"
+        msg += f"📊 <b>Грамматический разбор:</b>\n"
+        msg += f"{explanation}\n\n"
+        msg += f"💪 Отличной работы!"
         
         if send_telegram_message(msg):
             mark_answer_sent()
-            print("✅ Ответ отправлен")
+            print("\n✅ ОТВЕТ ОТПРАВЛЕН")
         else:
-            print("❌ Ошибка")
+            print("\n❌ ОШИБКА ОТПРАВКИ")
     
     print("="*50)
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
