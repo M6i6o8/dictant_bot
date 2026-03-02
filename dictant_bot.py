@@ -30,10 +30,10 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
 
 # ===== НАСТРОЙКА ВРЕМЕНИ =====
-TASK_HOUR_MSK = 14
-TASK_MINUTE_MSK = 41
-ANSWER_HOUR_MSK = 15
-ANSWER_MINUTE_MSK = 0
+TASK_HOUR_MSK = 18
+TASK_MINUTE_MSK = 45
+ANSWER_HOUR_MSK = 19
+ANSWER_MINUTE_MSK = 5
 
 TASK_HOUR_UTC = TASK_HOUR_MSK - 3
 ANSWER_HOUR_UTC = ANSWER_HOUR_MSK - 3
@@ -355,3 +355,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
