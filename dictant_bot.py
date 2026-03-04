@@ -30,10 +30,10 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
 
 # ===== ЖЁСТКАЯ НАСТРОЙКА ВРЕМЕНИ =====
-TASK_HOUR_MSK = 14        # Час задания по Москве
-TASK_MINUTE_MSK = 0       # Минута задания (0 = ровно в 14:00)
-ANSWER_HOUR_MSK = 15      # Час ответа по Москве
-ANSWER_MINUTE_MSK = 0     # Минута ответа (0 = ровно в 15:00)
+TASK_HOUR_MSK = 2        # Час задания по Москве
+TASK_MINUTE_MSK = 10       # Минута задания (0 = ровно в 14:00)
+ANSWER_HOUR_MSK = 2      # Час ответа по Москве
+ANSWER_MINUTE_MSK = 20     # Минута ответа (0 = ровно в 15:00)
 
 # Пересчёт в UTC
 TASK_HOUR_UTC = TASK_HOUR_MSK - 3
@@ -343,3 +343,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
