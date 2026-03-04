@@ -1,0 +1,63 @@
+name: 🔍 ДЕБАГ бота
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'  # Каждые 10 минут
+  workflow_dispatch:
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - run: pip install requests google-genai
+      
+      - name: 🔍 Запускаем с максимальным логированием
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+          GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
+          CEREBRAS_KEY: ${{ secrets.CEREBRAS_KEY }}
+          OPENROUTER_KEY: ${{ secrets.OPENROUTER_KEY }}
+          DEBUG: "true"
+        run: |
+          echo "🔍 СТАРТ ДЕБАГА $(date)" > debug_log.txt
+          echo "📁 Файлы до:" >> debug_log.txt
+          ls -la >> debug_log.txt
+          echo "" >> debug_log.txt
+          
+          python dictant_bot.py 2>&1 | tee -a debug_log.txt
+          
+          echo "" >> debug_log.txt
+          echo "📁 Файлы после:" >> debug_log.txt
+          ls -la >> debug_log.txt
+          echo "" >> debug_log.txt
+          echo "📄 Содержимое answer_sent.txt:" >> debug_log.txt
+          if [ -f answer_sent.txt ]; then
+            cat answer_sent.txt >> debug_log.txt
+          else
+            echo "Файл не существует" >> debug_log.txt
+          fi
+          echo "" >> debug_log.txt
+          echo "📄 Содержимое last_sentence.json:" >> debug_log.txt
+          if [ -f last_sentence.json ]; then
+            cat last_sentence.json >> debug_log.txt
+          else
+            echo "Файл не существует" >> debug_log.txt
+          fi
+      
+      - name: 📤 Сохраняем лог
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-log-${{ github.run_id }}
+          path: debug_log.txt
