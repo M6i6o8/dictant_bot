@@ -21,7 +21,6 @@ SENTENCES_FILE = 'sentences.json'
 USED_SENTENCES_FILE = 'used_sentences.txt'
 LAST_SENTENCE_FILE = 'last_sentence.json'
 ANSWER_SENT_FILE = 'answer_sent.txt'
-ANSWER_LOG_FILE = 'answer_log.txt'  # Новый файл для лога всех ответов
 
 OPENROUTER_KEY = os.environ.get('OPENROUTER_KEY')
 GEMINI_KEY = os.environ.get('GEMINI_KEY')
@@ -30,12 +29,13 @@ CEREBRAS_KEY = os.environ.get('CEREBRAS_KEY')
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
 
-# ===== НАСТРОЙКА ВРЕМЕНИ =====
-TASK_HOUR_MSK = 1
-TASK_MINUTE_MSK = 25
-ANSWER_HOUR_MSK = 1
-ANSWER_MINUTE_MSK = 35
+# ===== ЖЁСТКАЯ НАСТРОЙКА ВРЕМЕНИ =====
+TASK_HOUR_MSK = 14        # Час задания по Москве
+TASK_MINUTE_MSK = 0       # Минута задания (0 = ровно в 14:00)
+ANSWER_HOUR_MSK = 15      # Час ответа по Москве
+ANSWER_MINUTE_MSK = 0     # Минута ответа (0 = ровно в 15:00)
 
+# Пересчёт в UTC
 TASK_HOUR_UTC = TASK_HOUR_MSK - 3
 ANSWER_HOUR_UTC = ANSWER_HOUR_MSK - 3
 
@@ -44,32 +44,27 @@ if TASK_HOUR_UTC < 0:
 if ANSWER_HOUR_UTC < 0:
     ANSWER_HOUR_UTC += 24
 
-print(f"\n⚙️ ЗАДАНИЕ: {TASK_HOUR_MSK:02d}:{TASK_MINUTE_MSK:02d} МСК = {TASK_HOUR_UTC:02d}:{TASK_MINUTE_MSK:02d} UTC")
-print(f"⚙️ ОТВЕТ:   {ANSWER_HOUR_MSK:02d}:{ANSWER_MINUTE_MSK:02d} МСК = {ANSWER_HOUR_UTC:02d}:{ANSWER_MINUTE_MSK:02d} UTC")
+print(f"\n⚙️ ЖЁСТКОЕ РАСПИСАНИЕ:")
+print(f"   ЗАДАНИЕ: {TASK_HOUR_MSK:02d}:{TASK_MINUTE_MSK:02d} МСК = {TASK_HOUR_UTC:02d}:{TASK_MINUTE_MSK:02d} UTC")
+print(f"   ОТВЕТ:   {ANSWER_HOUR_MSK:02d}:{ANSWER_MINUTE_MSK:02d} МСК = {ANSWER_HOUR_UTC:02d}:{ANSWER_MINUTE_MSK:02d} UTC")
 
-# ===== ПРОВЕРКА ФАЙЛОВ =====
-print(f"\n📁 Файлы перед запуском:")
-print(f"   last_sentence.json: {'✅' if os.path.exists(LAST_SENTENCE_FILE) else '❌'}")
-print(f"   used_sentences.txt: {'✅' if os.path.exists(USED_SENTENCES_FILE) else '❌'}")
-print(f"   answer_sent.txt: {'✅' if os.path.exists(ANSWER_SENT_FILE) else '❌'}")
-print(f"   answer_log.txt: {'✅' if os.path.exists(ANSWER_LOG_FILE) else '❌'}")
-
-# ===== ОПРЕДЕЛЕНИЕ ТИПА ЗАПУСКА =====
+# ===== ОПРЕДЕЛЕНИЕ ТИПА ЗАПУСКА (ТОЛЬКО РОВНОЕ ВРЕМЯ) =====
 def get_run_type():
+    """Определяет тип запуска ТОЛЬКО по точному времени"""
     current_hour = datetime.now().hour
     current_minute = datetime.now().minute
     
-    print(f"\n🕐 UTC: {current_hour}:{current_minute:02d}")
-    print(f"🕐 МСК: {current_hour+3}:{current_minute:02d}")
+    print(f"\n🕐 Текущее время UTC: {current_hour}:{current_minute:02d}")
+    print(f"🕐 Текущее время МСК: {current_hour+3}:{current_minute:02d}")
     
-    # Задание: 30 минут после TASK_HOUR_UTC
-    if current_hour == TASK_HOUR_UTC and TASK_MINUTE_MSK <= current_minute < TASK_MINUTE_MSK + 30:
-        print("📌 Режим: ЗАДАНИЕ")
+    # ЗАДАНИЕ: только в exact минуту
+    if current_hour == TASK_HOUR_UTC and current_minute == TASK_MINUTE_MSK:
+        print("📌 Режим: ЗАДАНИЕ (точно по времени)")
         return 'task'
     
-    # Ответ: 30 минут после ANSWER_HOUR_UTC
-    if current_hour == ANSWER_HOUR_UTC and ANSWER_MINUTE_MSK <= current_minute < ANSWER_MINUTE_MSK + 30:
-        print("📌 Режим: ОТВЕТ")
+    # ОТВЕТ: только в exact минуту
+    if current_hour == ANSWER_HOUR_UTC and current_minute == ANSWER_MINUTE_MSK:
+        print("📌 Режим: ОТВЕТ (точно по времени)")
         return 'answer'
     
     print("📌 Режим: НЕ РАБОЧЕЕ ВРЕМЯ")
@@ -112,10 +107,6 @@ def save_last_sentence(sentence):
         with open(LAST_SENTENCE_FILE, 'w', encoding='utf-8') as f:
             json.dump(sentence, f, ensure_ascii=False, indent=2)
         print(f"✅ Предложение сохранено в {LAST_SENTENCE_FILE}")
-        
-        # Дублируем в бэкап
-        with open(LAST_SENTENCE_FILE + '.bak', 'w', encoding='utf-8') as f:
-            json.dump(sentence, f, ensure_ascii=False, indent=2)
         return True
     except Exception as e:
         print(f"❌ Ошибка сохранения: {e}")
@@ -125,12 +116,6 @@ def load_last_sentence():
     try:
         if os.path.exists(LAST_SENTENCE_FILE):
             with open(LAST_SENTENCE_FILE, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                print(f"✅ Предложение загружено: {data['en'][:50]}...")
-                return data
-        elif os.path.exists(LAST_SENTENCE_FILE + '.bak'):
-            print(f"⚠️ Загружаем из бэкапа")
-            with open(LAST_SENTENCE_FILE + '.bak', 'r', encoding='utf-8') as f:
                 return json.load(f)
     except Exception as e:
         print(f"❌ Ошибка загрузки: {e}")
@@ -139,87 +124,21 @@ def load_last_sentence():
 def was_task_sent_today():
     return os.path.exists(LAST_SENTENCE_FILE)
 
-# ===== УСИЛЕННЫЕ ФУНКЦИИ ПРОВЕРКИ ОТВЕТА =====
-def get_answer_history():
-    """Загружает историю ответов"""
-    try:
-        if os.path.exists(ANSWER_LOG_FILE):
-            with open(ANSWER_LOG_FILE, 'r') as f:
-                return [line.strip() for line in f.readlines() if line.strip()]
-    except:
-        pass
-    return []
-
-def log_answer(sentence_id, sentence_text):
-    """Логирует отправленный ответ"""
-    try:
-        today = datetime.now().strftime('%Y-%m-%d')
-        log_entry = f"{today}|{sentence_id}|{sentence_text[:50]}"
-        with open(ANSWER_LOG_FILE, 'a') as f:
-            f.write(log_entry + '\n')
-        print(f"📝 Ответ залогирован: {log_entry}")
-    except Exception as e:
-        print(f"⚠️ Ошибка логирования: {e}")
-
 def is_answer_sent_today():
-    """Проверяет, отправлен ли уже ответ сегодня (МАКСИМАЛЬНАЯ ЗАЩИТА)"""
-    today = datetime.now().strftime('%Y-%m-%d')
-    
-    # СПОСОБ 1: Проверка основного файла
+    """Проверка, отправлен ли ответ сегодня"""
     if os.path.exists(ANSWER_SENT_FILE):
-        try:
-            with open(ANSWER_SENT_FILE, 'r') as f:
-                last_date = f.read().strip()
-                print(f"📅 answer_sent.txt: {last_date}")
-                if last_date == today:
-                    print("✅ Файл answer_sent.txt подтверждает: ответ сегодня уже был")
-                    return True
-        except Exception as e:
-            print(f"⚠️ Ошибка чтения answer_sent.txt: {e}")
-    
-    # СПОСОБ 2: Проверка лога ответов
-    history = get_answer_history()
-    for entry in history:
-        if entry.startswith(today):
-            print(f"✅ Найдена запись в логе за сегодня: {entry}")
-            return True
-    
-    # СПОСОБ 3: Проверка бэкапа
-    if os.path.exists(ANSWER_SENT_FILE + '.bak'):
-        try:
-            with open(ANSWER_SENT_FILE + '.bak', 'r') as f:
-                backup_date = f.read().strip()
-                if backup_date == today:
-                    print("✅ Бэкап подтверждает: ответ сегодня был")
-                    return True
-        except:
-            pass
-    
-    print("📅 Ответ сегодня ещё не отправлялся")
+        with open(ANSWER_SENT_FILE, 'r') as f:
+            last_date = f.read().strip()
+            today = datetime.now().strftime('%Y-%m-%d')
+            return last_date == today
     return False
 
-def mark_answer_sent(sentence_id=None, sentence_text=None):
-    """Отмечает, что ответ отправлен сегодня (ТРОЙНАЯ ЗАПИСЬ)"""
-    try:
-        today = datetime.now().strftime('%Y-%m-%d')
-        
-        # Запись 1: Основной файл
-        with open(ANSWER_SENT_FILE, 'w') as f:
-            f.write(today)
-        print(f"✅ Основная отметка: {today}")
-        
-        # Запись 2: Бэкап
-        with open(ANSWER_SENT_FILE + '.bak', 'w') as f:
-            f.write(today)
-        
-        # Запись 3: Лог с деталями
-        if sentence_id and sentence_text:
-            log_answer(sentence_id, sentence_text)
-        
-        return True
-    except Exception as e:
-        print(f"❌ Ошибка при сохранении ответа: {e}")
-        return False
+def mark_answer_sent():
+    """Отмечает, что ответ отправлен"""
+    today = datetime.now().strftime('%Y-%m-%d')
+    with open(ANSWER_SENT_FILE, 'w') as f:
+        f.write(today)
+    print(f"✅ Ответ отмечен: {today}")
 
 # ===== ИЗВЛЕКАТЕЛЬ JSON =====
 def extract_json(text):
@@ -335,16 +254,14 @@ def send_telegram_message(text):
         if response.status_code == 200 and response.json().get('ok'):
             print("✅ Сообщение отправлено в Telegram")
             return True
-        else:
-            print(f"❌ Ошибка Telegram: {response.status_code}")
     except Exception as e:
         print(f"❌ Ошибка отправки: {type(e).__name__}")
     return False
 
 def commit_and_push_files():
-    """Коммитит и пушит изменения файлов обратно в репозиторий"""
+    """Коммитит изменения в репозиторий"""
     files_to_commit = []
-    for f in [LAST_SENTENCE_FILE, USED_SENTENCES_FILE, ANSWER_SENT_FILE, ANSWER_LOG_FILE]:
+    for f in [LAST_SENTENCE_FILE, USED_SENTENCES_FILE, ANSWER_SENT_FILE]:
         if os.path.exists(f):
             files_to_commit.append(f)
     
@@ -357,18 +274,18 @@ def commit_and_push_files():
         subprocess.run(['git', 'add'] + files_to_commit, check=True)
         subprocess.run(['git', 'commit', '-m', '[bot] Update state files'], check=True)
         subprocess.run(['git', 'push'], check=True)
-        print("✅ Изменения закоммичены и отправлены в репозиторий")
-    except subprocess.CalledProcessError as e:
-        print(f"⚠️ Ошибка при коммите/пуше (возможно, нечего коммитить): {e}")
+        print("✅ Изменения закоммичены")
+    except:
+        pass
 
 # ===== ГЛАВНАЯ =====
 def main():
     print("\n" + "="*50)
-    print("🚀 ЗАПУСК БОТА (СУПЕР-ЗАЩИТА)")
+    print("🚀 ЗАПУСК БОТА (ЖЁСТКОЕ ВРЕМЯ)")
     print("="*50)
     
     if RUN_TYPE == 'idle':
-        print("⏰ Не рабочее время")
+        print("⏰ Не время")
         print("="*50)
         return
     
@@ -377,8 +294,7 @@ def main():
         s = get_unique_sentence()
         
         if not s:
-            print("❌ Не удалось получить предложение")
-            print("="*50)
+            print("❌ Нет предложения")
             return
         
         save_last_sentence(s)
@@ -394,51 +310,36 @@ def main():
         if send_telegram_message(msg):
             print("\n✅ ЗАДАНИЕ ОТПРАВЛЕНО")
             commit_and_push_files()
-        else:
-            print("\n❌ ОШИБКА ОТПРАВКИ")
     
     else:  # answer
-        print("\n🔍 ПРОВЕРЯЮ ЗАДАНИЕ...")
+        print("\n🔍 ПРОВЕРЯЮ...")
         
         if not was_task_sent_today():
-            print("❌ Задание не найдено, ответ не отправляю")
-            print("="*50)
+            print("❌ Нет задания")
             return
         
-        # МАКСИМАЛЬНАЯ ПРОВЕРКА ОТВЕТА
         if is_answer_sent_today():
-            print("✅ Ответ уже был отправлен сегодня, повтор не будет")
-            print("="*50)
+            print("✅ Ответ уже был")
             return
         
-        print("\n🔍 ЗАГРУЖАЮ ПРЕДЛОЖЕНИЕ...")
         s = load_last_sentence()
-        
         if not s:
-            print("❌ Не удалось загрузить предложение")
-            print("="*50)
+            print("❌ Ошибка загрузки")
             return
-        
-        explanation = s.get('explanation', 'Продолжай практиковаться каждый день!')
         
         msg = f"📝 <b>ПРОВЕРКА ДИКТАНТА</b>\n\n"
         msg += f"🇬🇧 <b>Было:</b> {s['en']}\n"
         msg += f"🇷🇺 <b>Правильный перевод:</b>\n"
         msg += f"<i>{s['ru']}</i>\n\n"
-        msg += f"📊 <b>Грамматический разбор:</b>\n"
-        msg += f"{explanation}\n\n"
-        msg += f"💪 Отличной работы!"
+        msg += f"📊 <b>Разбор:</b>\n"
+        msg += f"{s.get('explanation', 'Молодец!')}"
         
         if send_telegram_message(msg):
-            # Тройная отметка об отправке
-            mark_answer_sent(s.get('id'), s['en'])
-            print("\n✅ ОТВЕТ ОТПРАВЛЕН И ЗАЛОГИРОВАН")
+            mark_answer_sent()
+            print("\n✅ ОТВЕТ ОТПРАВЛЕН")
             commit_and_push_files()
-        else:
-            print("\n❌ ОШИБКА ОТПРАВКИ")
     
     print("="*50)
 
 if __name__ == "__main__":
     main()
-
