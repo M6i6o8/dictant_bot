@@ -2,53 +2,31 @@ name: 🇬🇧 Ежедневный диктант
 
 on:
   schedule:
-    # ЗАДАНИЕ: 01:25 - 01:30 МСК (22:25 - 22:30 UTC предыдущего дня)
-    - cron: '25 22 * * *'    # 01:25
-    - cron: '26 22 * * *'    # 01:26
-    - cron: '27 22 * * *'    # 01:27
-    - cron: '28 22 * * *'    # 01:28
-    - cron: '29 22 * * *'    # 01:29
-    - cron: '30 22 * * *'    # 01:30
-    
-    # ОТВЕТ: 01:35 - 01:40 МСК (22:35 - 22:40 UTC)
-    - cron: '35 22 * * *'    # 01:35
-    - cron: '36 22 * * *'    # 01:36
-    - cron: '37 22 * * *'    # 01:37
-    - cron: '38 22 * * *'    # 01:38
-    - cron: '39 22 * * *'    # 01:39
-    - cron: '40 22 * * *'    # 01:40
+    - cron: '10 23 * * *'   # 2:10 МСК (23:10 UTC предыдущего дня) - задание
+    - cron: '20 23 * * *'   # 2:20 МСК (23:20 UTC предыдущего дня) - ответ
   workflow_dispatch:
 
 jobs:
   send_dictant:
     runs-on: ubuntu-latest
-    # Даём права на запись в репозиторий, чтобы пушить изменения
     permissions:
       contents: write
     steps:
-      - name: 📥 Клонируем репозиторий
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          # Важно: пул с историей, чтобы можно было пушить
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: 🐍 Устанавливаем Python
-        uses: actions/setup-python@v5
+      
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
-      - name: 📦 Устанавливаем зависимости
-        run: |
-          pip install --upgrade pip
-          pip install requests google-genai
-
-      - name: 🤖 Запускаем бота
-        id: run_bot
+      
+      - run: pip install requests google-genai
+      
+      - run: python dictant_bot.py
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
           GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
           CEREBRAS_KEY: ${{ secrets.CEREBRAS_KEY }}
           OPENROUTER_KEY: ${{ secrets.OPENROUTER_KEY }}
-        run: python dictant_bot.py
