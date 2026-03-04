@@ -4,7 +4,7 @@ import os
 import requests
 import hashlib
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 import subprocess
 
 # Google Gemini
@@ -29,10 +29,20 @@ CEREBRAS_KEY = os.environ.get('CEREBRAS_KEY')
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
 
+# ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
+def get_msk_date():
+    """Возвращает сегодняшнюю дату по московскому времени"""
+    msk_time = datetime.utcnow() + timedelta(hours=3)
+    return msk_time.strftime('%Y-%m-%d')
+
+def get_msk_datetime():
+    """Возвращает полное время по МСК"""
+    return datetime.utcnow() + timedelta(hours=3)
+
 # ===== ТИП ЗАПУСКА ИЗ ПЕРЕМЕННОЙ ОКРУЖЕНИЯ =====
-# GitHub Actions будет передавать RUN_TYPE: task или answer
 RUN_TYPE = os.environ.get('RUN_TYPE', 'unknown')
 print(f"\n📌 Тип запуска из GitHub: {RUN_TYPE}")
+print(f"🕐 Время по МСК: {get_msk_datetime().strftime('%Y-%m-%d %H:%M:%S')}")
 
 # ===== ФУНКЦИИ РАБОТЫ С ФАЙЛАМИ =====
 def load_used_ids():
@@ -87,21 +97,36 @@ def was_task_sent_today():
     return os.path.exists(LAST_SENTENCE_FILE)
 
 def is_answer_sent_today():
-    """Проверка, отправлен ли ответ сегодня"""
+    """Проверка, отправлен ли ответ сегодня (по МСК)"""
     if os.path.exists(ANSWER_SENT_FILE):
         with open(ANSWER_SENT_FILE, 'r') as f:
             last_date = f.read().strip()
-            today = datetime.now().strftime('%Y-%m-%d')
-            print(f"📅 Последний ответ: {last_date}, сегодня: {today}")
-            return last_date == today
+            today = get_msk_date()
+            print(f"📅 Последний ответ в файле: {last_date}")
+            print(f"📅 Сегодня по МСК: {today}")
+            
+            # Если даты совпадают - ответ уже был
+            if last_date == today:
+                print("✅ Ответ сегодня уже был")
+                return True
+            else:
+                print("📅 Ответ был в другой день")
+                return False
+    print("📁 Файл answer_sent.txt не найден")
     return False
 
 def mark_answer_sent():
-    """Отмечает, что ответ отправлен"""
-    today = datetime.now().strftime('%Y-%m-%d')
+    """Отмечает, что ответ отправлен (по МСК)"""
+    today = get_msk_date()
     with open(ANSWER_SENT_FILE, 'w') as f:
         f.write(today)
-    print(f"✅ Ответ отмечен: {today}")
+    print(f"✅ Ответ отмечен по МСК: {today}")
+    
+    # Дополнительная проверка
+    if os.path.exists(ANSWER_SENT_FILE):
+        with open(ANSWER_SENT_FILE, 'r') as f:
+            written = f.read().strip()
+            print(f"📝 Проверка записи: {written}")
 
 # ===== ИЗВЛЕКАТЕЛЬ JSON =====
 def extract_json(text):
@@ -235,16 +260,16 @@ def commit_and_push_files():
         subprocess.run(['git', 'config', '--global', 'user.name', 'github-actions[bot]'], check=True)
         subprocess.run(['git', 'config', '--global', 'user.email', 'github-actions[bot]@users.noreply.github.com'], check=True)
         subprocess.run(['git', 'add'] + files_to_commit, check=True)
-        subprocess.run(['git', 'commit', '-m', '[bot] Update state files'], check=True)
+        subprocess.run(['git', 'commit', '-m', f'[bot] Update state files {get_msk_date()}'], check=True)
         subprocess.run(['git', 'push'], check=True)
         print("✅ Изменения закоммичены")
-    except:
-        pass
+    except subprocess.CalledProcessError as e:
+        print(f"⚠️ Ошибка коммита (возможно, нечего коммитить): {e}")
 
 # ===== ГЛАВНАЯ =====
 def main():
     print("\n" + "="*50)
-    print("🚀 ЗАПУСК БОТА (УПРАВЛЕНИЕ ЧЕРЕЗ RUN_TYPE)")
+    print("🚀 ЗАПУСК БОТА")
     print("="*50)
     
     print(f"🤖 BOT_TOKEN: {'✅' if BOT_TOKEN else '❌'}")
@@ -264,12 +289,16 @@ def main():
         save_last_sentence(s)
         mark_as_used(s)
         
+        # Получаем час и минуту ответа из времени запуска +10 минут
+        answer_time = get_msk_datetime() + timedelta(minutes=10)
+        answer_time_str = answer_time.strftime('%H:%M')
+        
         msg = f"📝 <b>ЕЖЕДНЕВНЫЙ ДИКТАНТ</b>\n\n"
         msg += f"<b>Тема:</b> {s['topic']}\n"
         msg += f"<b>Сложность:</b> {s.get('difficulty', 'легко')}\n\n"
         msg += f"🇬🇧 <b>Переведи на русский:</b>\n"
         msg += f"<i>{s['en']}</i>\n\n"
-        msg += f"⏳ <b>Ответ и разбор придут через 10 минут</b>"
+        msg += f"⏳ <b>Ответ и разбор придут сегодня в {answer_time_str}</b>"
         
         if send_telegram_message(msg):
             print("\n✅ ЗАДАНИЕ ОТПРАВЛЕНО")
