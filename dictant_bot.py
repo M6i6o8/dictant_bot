@@ -29,48 +29,10 @@ CEREBRAS_KEY = os.environ.get('CEREBRAS_KEY')
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
 
-# ===== ЖЁСТКАЯ НАСТРОЙКА ВРЕМЕНИ =====
-TASK_HOUR_MSK = 2        # Час задания по Москве
-TASK_MINUTE_MSK = 10       # Минута задания (0 = ровно в 14:00)
-ANSWER_HOUR_MSK = 2      # Час ответа по Москве
-ANSWER_MINUTE_MSK = 20     # Минута ответа (0 = ровно в 15:00)
-
-# Пересчёт в UTC
-TASK_HOUR_UTC = TASK_HOUR_MSK - 3
-ANSWER_HOUR_UTC = ANSWER_HOUR_MSK - 3
-
-if TASK_HOUR_UTC < 0:
-    TASK_HOUR_UTC += 24
-if ANSWER_HOUR_UTC < 0:
-    ANSWER_HOUR_UTC += 24
-
-print(f"\n⚙️ ЖЁСТКОЕ РАСПИСАНИЕ:")
-print(f"   ЗАДАНИЕ: {TASK_HOUR_MSK:02d}:{TASK_MINUTE_MSK:02d} МСК = {TASK_HOUR_UTC:02d}:{TASK_MINUTE_MSK:02d} UTC")
-print(f"   ОТВЕТ:   {ANSWER_HOUR_MSK:02d}:{ANSWER_MINUTE_MSK:02d} МСК = {ANSWER_HOUR_UTC:02d}:{ANSWER_MINUTE_MSK:02d} UTC")
-
-# ===== ОПРЕДЕЛЕНИЕ ТИПА ЗАПУСКА (ТОЛЬКО РОВНОЕ ВРЕМЯ) =====
-def get_run_type():
-    """Определяет тип запуска ТОЛЬКО по точному времени"""
-    current_hour = datetime.now().hour
-    current_minute = datetime.now().minute
-    
-    print(f"\n🕐 Текущее время UTC: {current_hour}:{current_minute:02d}")
-    print(f"🕐 Текущее время МСК: {current_hour+3}:{current_minute:02d}")
-    
-    # ЗАДАНИЕ: только в exact минуту
-    if current_hour == TASK_HOUR_UTC and current_minute == TASK_MINUTE_MSK:
-        print("📌 Режим: ЗАДАНИЕ (точно по времени)")
-        return 'task'
-    
-    # ОТВЕТ: только в exact минуту
-    if current_hour == ANSWER_HOUR_UTC and current_minute == ANSWER_MINUTE_MSK:
-        print("📌 Режим: ОТВЕТ (точно по времени)")
-        return 'answer'
-    
-    print("📌 Режим: НЕ РАБОЧЕЕ ВРЕМЯ")
-    return 'idle'
-
-RUN_TYPE = get_run_type()
+# ===== ТИП ЗАПУСКА ИЗ ПЕРЕМЕННОЙ ОКРУЖЕНИЯ =====
+# GitHub Actions будет передавать RUN_TYPE: task или answer
+RUN_TYPE = os.environ.get('RUN_TYPE', 'unknown')
+print(f"\n📌 Тип запуска из GitHub: {RUN_TYPE}")
 
 # ===== ФУНКЦИИ РАБОТЫ С ФАЙЛАМИ =====
 def load_used_ids():
@@ -130,6 +92,7 @@ def is_answer_sent_today():
         with open(ANSWER_SENT_FILE, 'r') as f:
             last_date = f.read().strip()
             today = datetime.now().strftime('%Y-%m-%d')
+            print(f"📅 Последний ответ: {last_date}, сегодня: {today}")
             return last_date == today
     return False
 
@@ -281,13 +244,14 @@ def commit_and_push_files():
 # ===== ГЛАВНАЯ =====
 def main():
     print("\n" + "="*50)
-    print("🚀 ЗАПУСК БОТА (ЖЁСТКОЕ ВРЕМЯ)")
+    print("🚀 ЗАПУСК БОТА (УПРАВЛЕНИЕ ЧЕРЕЗ RUN_TYPE)")
     print("="*50)
     
-    if RUN_TYPE == 'idle':
-        print("⏰ Не время")
-        print("="*50)
-        return
+    print(f"🤖 BOT_TOKEN: {'✅' if BOT_TOKEN else '❌'}")
+    print(f"📢 CHAT_ID: {'✅' if CHAT_ID else '❌'}")
+    print(f"🔑 GEMINI_KEY: {'✅' if GEMINI_KEY else '❌'}")
+    print(f"🔑 CEREBRAS_KEY: {'✅' if CEREBRAS_KEY else '❌'}")
+    print(f"🔑 OPENROUTER_KEY: {'✅' if OPENROUTER_KEY else '❌'}")
     
     if RUN_TYPE == 'task':
         print("\n🔍 ГЕНЕРИРУЮ ЗАДАНИЕ...")
@@ -305,14 +269,14 @@ def main():
         msg += f"<b>Сложность:</b> {s.get('difficulty', 'легко')}\n\n"
         msg += f"🇬🇧 <b>Переведи на русский:</b>\n"
         msg += f"<i>{s['en']}</i>\n\n"
-        msg += f"⏳ <b>Ответ и разбор придут сегодня в {ANSWER_HOUR_MSK:02d}:{ANSWER_MINUTE_MSK:02d}</b>"
+        msg += f"⏳ <b>Ответ и разбор придут через 10 минут</b>"
         
         if send_telegram_message(msg):
             print("\n✅ ЗАДАНИЕ ОТПРАВЛЕНО")
             commit_and_push_files()
     
-    else:  # answer
-        print("\n🔍 ПРОВЕРЯЮ...")
+    elif RUN_TYPE == 'answer':
+        print("\n🔍 ПРОВЕРЯЮ ЗАДАНИЕ...")
         
         if not was_task_sent_today():
             print("❌ Нет задания")
@@ -332,15 +296,17 @@ def main():
         msg += f"🇷🇺 <b>Правильный перевод:</b>\n"
         msg += f"<i>{s['ru']}</i>\n\n"
         msg += f"📊 <b>Разбор:</b>\n"
-        msg += f"{s.get('explanation', 'Молодец!')}"
+        msg += f"{s.get('explanation', 'Продолжай практиковаться каждый день!')}"
         
         if send_telegram_message(msg):
             mark_answer_sent()
             print("\n✅ ОТВЕТ ОТПРАВЛЕН")
             commit_and_push_files()
     
+    else:
+        print(f"❌ Неизвестный тип запуска: {RUN_TYPE}")
+    
     print("="*50)
 
 if __name__ == "__main__":
     main()
-
